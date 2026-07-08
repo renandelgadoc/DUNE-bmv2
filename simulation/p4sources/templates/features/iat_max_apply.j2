@@ -1,0 +1,13 @@
+        // NOTE: meta.iat must be computed in the ingress parser before this
+        // template is used (it is not defined in the default Metadata_t).
+        if (new_flow) {
+            iat_max = 0;
+            WriteIATMax();
+        } else {
+            ReadIATMax();
+            if (iat_max < meta.iat) {
+                iat_max = meta.iat;
+                WriteIATMax();
+            }
+        }
+

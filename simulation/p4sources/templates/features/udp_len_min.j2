@@ -1,0 +1,6 @@
+    action ReadUDPLenMin() {
+        flows_udp_len_min.read(udp_len_min, hashes.reg_idx32);
+    }
+    action WriteUDPLenMin() {
+        flows_udp_len_min.write(hashes.reg_idx32, udp_len_min);
+    }

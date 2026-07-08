@@ -1,0 +1,7 @@
+    action ReadTotalLength() {
+        flows_total_length.read(total_length, hashes.reg_idx32);
+    }
+    action WriteTotalLength() {
+        total_length = total_length + hdr.ipv4.total_length;
+        flows_total_length.write(hashes.reg_idx32, total_length);
+    }

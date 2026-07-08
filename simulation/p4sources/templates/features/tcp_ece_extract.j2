@@ -1,0 +1,6 @@
+        if (hdr.ipv4.protocol == IPv4Proto.TCP) {
+            features.tcp_ece = hdr.tcp.ece;
+        } else {
+            features.tcp_ece = 0;
+        }
+

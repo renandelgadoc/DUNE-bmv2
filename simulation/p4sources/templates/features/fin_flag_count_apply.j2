@@ -1,0 +1,11 @@
+        if (new_flow) {
+            fin_flag_count = 0;
+            WriteFINFlagCount();
+        } else {
+            ReadFINFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.fin == 1) {
+            fin_flag_count = fin_flag_count + 1;
+            WriteFINFlagCount();
+        }
+

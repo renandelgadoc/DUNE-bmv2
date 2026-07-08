@@ -1,0 +1,12 @@
+        // NOTE: mean_length stores the RUNNING SUM of packet lengths, not the
+        // true arithmetic mean. The model's CodeTable thresholds must be scaled
+        // by INFERENCE_POINT (e.g. x3 for a 3-packet model) at population time
+        // to compensate. This avoids integer division in the dataplane.
+        if (new_flow) {
+            mean_length = 0;
+        } else {
+            ReadMeanLength();
+        }
+        mean_length = mean_length + hdr.ipv4.total_length;
+        WriteMeanLength();
+

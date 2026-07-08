@@ -1,0 +1,7 @@
+    action ReadMaxLength() {
+        flows_max_length.read(max_length, hashes.reg_idx32);
+    }
+    action WriteMaxLength() {
+        max_length = hdr.ipv4.total_length;
+        flows_max_length.write(hashes.reg_idx32, max_length);
+    }

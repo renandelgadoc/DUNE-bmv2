@@ -1,0 +1,11 @@
+        if (new_flow) {
+            ece_flag_count = 0;
+            WriteECEFlagCount();
+        } else {
+            ReadECEFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.ece == 1) {
+            ece_flag_count = ece_flag_count + 1;
+            WriteECEFlagCount();
+        }
+

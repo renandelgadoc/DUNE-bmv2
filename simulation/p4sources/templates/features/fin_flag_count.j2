@@ -1,0 +1,7 @@
+    action ReadFINFlagCount() {
+        flows_fin_flag_count.read(fin_flag_count, hashes.reg_idx32);
+    }
+    action WriteFINFlagCount() {
+        fin_flag_count = fin_flag_count + 1;
+        flows_fin_flag_count.write(hashes.reg_idx32, fin_flag_count);
+    }

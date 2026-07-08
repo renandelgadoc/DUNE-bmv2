@@ -1,0 +1,12 @@
+        if (new_flow) {
+            // Store the start timestamp in the register; report duration = 0.
+            flow_duration = (bit<32>)std_meta.ingress_global_timestamp;
+            WriteFlowDuration();
+            flow_duration = 0;
+        } else {
+            // Read stored start timestamp and compute elapsed time.
+            // The register is NOT overwritten so the start time is preserved.
+            ReadFlowDuration();
+            flow_duration = (bit<32>)std_meta.ingress_global_timestamp - flow_duration;
+        }
+

@@ -1,0 +1,6 @@
+    action ReadUDPLenMax() {
+        flows_udp_len_max.read(udp_len_max, hashes.reg_idx32);
+    }
+    action WriteUDPLenMax() {
+        flows_udp_len_max.write(hashes.reg_idx32, udp_len_max);
+    }

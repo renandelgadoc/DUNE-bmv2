@@ -1,0 +1,228 @@
+#include <core.p4>
+#include <v1model.p4>
+
+{% if partitioning_type == "ensemble" %}
+#define ENSEMBLE_MODE
+{% if is_last_model %}
+#define IS_LAST_MODEL
+{% endif %}
+{% endif %}
+
+// Warning :
+// The following names :
+// - StatefullFeatures_t
+// - UpdateAndGetStatefullFeatures
+// - GetStatefullFeaturesDefaultValues
+// - INFERENCE_POINT
+// - InferenceModel
+// are shared with the ingress control block. They must be the same
+// or the compilation will fail.
+
+#include "dune_headers.p4"
+
+struct StatefullFeatures_t {
+{% for feat in stateful_features %}
+    bit<{{ feat.bit_width }}> {{ feat.struct_field }};
+{% endfor %}
+{% if not stateful_features %}
+    bit<1> _placeholder;
+{% endif %}
+}
+
+control UpdateAndGetStatefullFeatures(
+    in Headers_t hdr,
+    in standard_metadata_t std_meta,
+    in Hash_t hashes,
+    in PktCount_t pkt_count,
+    in bool new_flow,
+    out StatefullFeatures_t statefull_features
+)
+{
+{% for feat in stateful_features %}
+    bit<{{ feat.bit_width }}> {{ feat.struct_field }};
+    register<bit<{{ feat.bit_width }}>>(NB_REG_ENTRIES) {{ feat.reg_name }};
+    {% include "features/" + feat.update_logic + ".j2" %}
+
+{% endfor %}
+    apply {
+{% for feat in stateful_features %}
+{% include "features/" + feat.update_logic + "_apply.j2" %}
+
+{% endfor %}
+        statefull_features = {
+{% for feat in stateful_features %}
+            {{ feat.struct_field }} = {{ feat.struct_field }}{{ "," if not loop.last else "" }}
+{% endfor %}
+{% if not stateful_features %}
+            _placeholder = 0
+{% endif %}
+        };
+    }
+}
+
+control GetStatefullFeaturesDefaultValues(
+    out StatefullFeatures_t statefull_features
+)
+{
+    apply {
+        statefull_features = {
+{% for feat in stateful_features %}
+            {{ feat.struct_field }} = 0{{ "," if not loop.last else "" }}
+{% endfor %}
+{% if not stateful_features %}
+            _placeholder = 0
+{% endif %}
+        };
+    }
+}
+
+#define INFERENCE_POINT {{ inference_point }}
+#define MODEL_ID {{ model_id }}
+
+struct Features_t {
+{% for feat in packet_features %}
+    bit<{{ feat.bit_width }}> {{ feat.struct_field }};
+{% endfor %}
+};
+
+struct Codewords_t {
+{% for tree_id in range(n_trees) %}
+{% for info in features_info %}
+    bit<{{ info.code_sizes_per_tree[tree_id] }}> codeword{{ tree_id }}_{{ info.index }};
+{% endfor %}
+{% endfor %}
+};
+
+{% if n_trees > 1 %}
+struct VotingClasses_t {
+{% for tree_id in range(n_trees) %}
+    bit<8> class{{ tree_id }};
+{% endfor %}
+};
+{% endif %}
+
+control InferenceModel(
+    in Headers_t hdr,
+    in Metadata_t meta,
+    in standard_metadata_t std_meta,
+    in StatefullFeatures_t statefull_features,
+    out Class_t class
+)
+{
+    Codewords_t codewords = { {{ ", ".join(["0"] * (n_trees * features_info|length)) }} };
+{% if n_trees > 1 %}
+    VotingClasses_t voting_classes = { {{ ", ".join(["0"] * n_trees) }} };
+{% endif %}
+
+{% for info in features_info %}
+    action SetCode{{ info.index }}({% for tree_id in info.used_codes %}bit<{{ info.code_sizes_per_tree[tree_id] }}> code{{ tree_id }}{{ ", " if not loop.last else "" }}{% endfor %}) {
+{% for tree_id in info.used_codes %}
+        codewords.codeword{{ tree_id }}_{{ info.index }} = code{{ tree_id }};
+{% endfor %}
+    }
+{% endfor %}
+
+    action nop() {}
+
+    Features_t features;
+    // FEATURES: {{ feature_names }}
+{% for info in features_info %}
+    table TableFeature{{ info.index }}{
+        key = { {{ info.key_expr }}: range @name("feature{{ info.index }}"); }
+        actions = {@defaultonly nop; SetCode{{ info.index }};}
+        size = {{ info.table_size }};
+        const default_action = nop();
+    }
+{% endfor %}
+
+{% for tree_id in range(n_trees) %}
+    action SetClass{{ tree_id }}(bit<8> classe) {
+{% if n_trees > 1 %}
+        voting_classes.class{{ tree_id }} = classe;
+{% else %}
+        class = classe;
+{% endif %}
+    }
+    action SetClass{{ tree_id }}ToUnknown() {
+{% if n_trees > 1 %}
+        voting_classes.class{{ tree_id }} = UNKNOWN_CLASS;
+{% else %}
+        class = UNKNOWN_CLASS;
+{% endif %}
+    }
+
+    table CodeTable{{ tree_id }}{
+        key = {
+    {% for info in features_info %}
+    {% if info.code_sizes_per_tree[tree_id] > 0 %}
+            codewords.codeword{{ tree_id }}_{{ info.index }}: ternary;
+    {% endif %}
+    {% endfor %}
+        }
+        actions = {SetClass{{ tree_id }}; @defaultonly SetClass{{ tree_id }}ToUnknown;}
+        size = {{ n_leaves }};
+        const default_action = SetClass{{ tree_id }}ToUnknown();
+    }
+{% endfor %}
+
+{% if n_trees > 1 %}
+    action SetVotingResult(bit<8> vote_result) {
+        class = vote_result;
+    }
+
+    table VotingTable{
+        key = {
+    {% for tree_id in range(n_trees) %}
+            voting_classes.class{{ tree_id }}: exact;
+    {% endfor %}
+        }
+        actions = {SetVotingResult;}
+        size = 64;
+    }
+{% endif %}
+
+    apply {
+{% for feat in packet_features %}
+{% include "features/" + feat.extract_template + "_extract.j2" %}
+{% endfor %}
+
+
+{% for info in features_info %}
+        TableFeature{{ info.index }}.apply();
+{% endfor %}
+
+{% for tree_id in range(n_trees) %}
+        CodeTable{{ tree_id }}.apply();
+{% endfor %}
+{% if n_trees > 1 %}
+        VotingTable.apply();
+{% endif %}
+
+{% if partitioning_type != "ensemble" %}
+        class = class + {{ class_offset }};
+        if ({{ unknown_class_id }} == class) {
+            class = UNKNOWN_CLASS;
+        }
+{% endif %}
+    }
+}
+
+// The following headers must be included after the declaration with
+// the names mentionned in the WARNING at the top of the file
+// otherwise the compilation will fail
+
+#include "dune_ingress_parser.p4"
+#include "dune_verify_checksum.p4"
+#include "dune_ingress.p4"
+#include "dune_egress.p4"
+#include "dune_compute_checksum.p4"
+#include "dune_egress_deparser.p4"
+
+V1Switch(
+    DuneIngressParser(),
+    DuneVerifyChecksum(),
+    DuneIngress(),
+    DuneEgress(),
+    DuneComputeChecksum(),
+    DuneEgressDeparser()
+) main;

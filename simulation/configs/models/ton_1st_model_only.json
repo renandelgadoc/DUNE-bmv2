@@ -1,0 +1,9 @@
+{
+    "m0": {
+        "p4": "ton_iot_m0",
+        "files": [
+            "ton/selected_model_cluster0.pkl"
+        ],
+        "previous": null
+    }
+}

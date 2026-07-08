@@ -1,0 +1,7 @@
+    action ReadRSTFlagCount() {
+        flows_rst_flag_count.read(rst_flag_count, hashes.reg_idx32);
+    }
+    action WriteRSTFlagCount() {
+        rst_flag_count = rst_flag_count + 1;
+        flows_rst_flag_count.write(hashes.reg_idx32, rst_flag_count);
+    }

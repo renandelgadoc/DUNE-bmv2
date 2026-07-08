@@ -1,0 +1,11 @@
+        if (new_flow) {
+            ack_flag_count = 0;
+            WriteACKFlagCount();
+        } else {
+            ReadACKFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.ack == 1) {
+            ack_flag_count = ack_flag_count + 1;
+            WriteACKFlagCount();
+        }
+

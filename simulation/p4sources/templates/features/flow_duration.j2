@@ -1,0 +1,6 @@
+    action ReadFlowDuration() {
+        flows_duration.read(flow_duration, hashes.reg_idx32);
+    }
+    action WriteFlowDuration() {
+        flows_duration.write(hashes.reg_idx32, flow_duration);
+    }

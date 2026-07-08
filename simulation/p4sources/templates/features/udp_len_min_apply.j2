@@ -1,0 +1,13 @@
+        if (new_flow) {
+            udp_len_min = 0;
+            WriteUDPLenMin();
+        } else {
+            ReadUDPLenMin();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.UDP) {
+            if (udp_len_min == 0 || udp_len_min > hdr.udp.length) {
+                udp_len_min = hdr.udp.length;
+                WriteUDPLenMin();
+            }
+        }
+

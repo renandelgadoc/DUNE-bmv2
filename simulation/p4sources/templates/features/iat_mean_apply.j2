@@ -1,0 +1,13 @@
+        // NOTE: iat_mean stores the RUNNING SUM of inter-arrival times (IATs).
+        // For INFERENCE_POINT N there are N-1 IAT values. Thresholds must be
+        // scaled by (INFERENCE_POINT - 1) at population time to compensate.
+        // meta.iat must be computed in the ingress parser before this template
+        // is used (it is not defined in the default Metadata_t).
+        if (new_flow) {
+            iat_mean = 0;
+        } else {
+            ReadIATMean();
+            iat_mean = iat_mean + meta.iat;
+        }
+        WriteIATMean();
+

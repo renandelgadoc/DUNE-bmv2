@@ -1,0 +1,7 @@
+    action ReadECEFlagCount() {
+        flows_ece_flag_count.read(ece_flag_count, hashes.reg_idx32);
+    }
+    action WriteECEFlagCount() {
+        ece_flag_count = ece_flag_count + 1;
+        flows_ece_flag_count.write(hashes.reg_idx32, ece_flag_count);
+    }

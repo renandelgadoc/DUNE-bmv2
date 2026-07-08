@@ -1,0 +1,6 @@
+    action ReadIATMin() {
+        flows_iat_min.read(iat_min, hashes.reg_idx32);
+    }
+    action WriteIATMin() {
+        flows_iat_min.write(hashes.reg_idx32, iat_min);
+    }

@@ -1,0 +1,13 @@
+        if (new_flow) {
+            udp_len_max = 0;
+            WriteUDPLenMax();
+        } else {
+            ReadUDPLenMax();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.UDP) {
+            if (udp_len_max < hdr.udp.length) {
+                udp_len_max = hdr.udp.length;
+                WriteUDPLenMax();
+            }
+        }
+

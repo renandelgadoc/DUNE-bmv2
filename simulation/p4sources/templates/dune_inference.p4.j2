@@ -1,0 +1,313 @@
+#ifndef DUNE_INFERENCE_P4
+#define DUNE_INFERENCE_P4
+
+#include "dune_headers.p4"
+
+control IsFlowClassKnownLocally(
+    in Headers_t hdr,
+    in Metadata_t meta,
+    out bool known,
+    out Class_t class
+)
+{
+    action MetaSetFlowClass(Class_t flow_class) {
+        class = flow_class;
+        known = true;
+    }
+
+    action MetaSetUnkownFlowClass() {
+        class = UNKNOWN_CLASS;
+        known = false;
+    }
+
+    table FlowClass {
+        key = {
+            hdr.ipv4.src_addr:  exact;
+            hdr.ipv4.dst_addr:  exact;
+            meta.src_port:      exact;
+            meta.dst_port:      exact;
+            hdr.ipv4.protocol:  exact;
+        }
+        actions = {
+            MetaSetFlowClass;
+            @defaultonly MetaSetUnkownFlowClass;
+        }
+        size = NB_REG_ENTRIES;   // comporta os fluxos do teste (~2,22M); mesmo knob IDX_BIT_WIDTH
+        const default_action = MetaSetUnkownFlowClass();
+    }
+
+    apply {
+        FlowClass.apply();
+    }
+}
+
+control ComputeHashes(
+    out Hash_t hashes,
+    in Headers_t hdr,
+    in Metadata_t meta
+)
+{
+    apply {
+        hashes.key = {
+            hdr.ipv4.src_addr,
+            hdr.ipv4.dst_addr,
+            meta.src_port,
+            meta.dst_port,
+            hdr.ipv4.protocol,
+        };
+        hash(
+            hashes.flow_id,
+            HashAlgorithm.crc32,
+            (bit<64>) 0,
+            hashes.key,
+            (bit<64>) 1 << 32
+        );
+        hash(
+            hashes.reg_idx,
+            HashAlgorithm.crc32,
+            (bit<64>) 0,
+            hashes.key,
+            (bit<64>) 1 << IDX_BIT_WIDTH
+        );
+        hashes.reg_idx32 = (bit<32>) hashes.reg_idx;
+    }
+}
+
+control CheckCollisionAndNewFlow(
+    in Hash_t hashes,
+    out bool collision,
+    out bool is_new_flow
+)
+{
+    register<bit<1>>(NB_REG_ENTRIES) flow_id_used;
+
+    action UpdateUsedFlowIds() {
+        flow_id_used.write(hashes.reg_idx32, 1);
+    }
+
+    register<FlowId_t>(NB_REG_ENTRIES) flow_ids;
+    apply {
+        bit<1> used;
+        FlowId_t flow_id;
+
+        flow_id_used.read(used, hashes.reg_idx32);
+        if ((bool)used) {
+            flow_ids.read(flow_id, hashes.reg_idx32);
+            collision = flow_id != hashes.flow_id;
+            is_new_flow = false;
+        } else {
+            collision = false;
+            is_new_flow = true;
+            flow_ids.write(hashes.reg_idx32, hashes.flow_id);
+        }
+        UpdateUsedFlowIds();
+    }
+}
+
+control GetPktCount(
+    in Hash_t hashes,
+    out PktCount_t pkt_count
+)
+{
+    register<PktCount_t>(NB_REG_ENTRIES) pkt_counts;
+    apply {
+        pkt_counts.read(pkt_count, hashes.reg_idx32);
+        pkt_count = pkt_count + 1;
+        pkt_counts.write(hashes.reg_idx32, pkt_count);
+    }
+}
+
+#ifdef ENSEMBLE_MODE
+// Registers a single vote for the locally predicted class by incrementing the
+// corresponding counter in the Votes header. One exact-match action per class,
+// no chained if/else.
+control VoteDispatch(
+    inout Votes_t votes,
+    in Class_t predicted
+)
+{
+{% for i in range(n_classes) %}
+    action AddVoteClass{{ i }}() {
+        votes.votes_class_{{ i }} = votes.votes_class_{{ i }} + 1;
+    }
+{% endfor %}
+    action nop() {}
+
+    table Dispatch {
+        key = {
+            predicted: exact;
+        }
+        actions = {
+{% for i in range(n_classes) %}
+            AddVoteClass{{ i }};
+{% endfor %}
+            nop;
+        }
+        const entries = {
+{% for i in range(n_classes) %}
+            // InferenceModel emits 1-based class ids (convert writes cla+1);
+            // counter votes_class_{{ i }} is 0-based, so class {{ i + 1 }} -> counter {{ i }}.
+            ({{ i + 1 }}) : AddVoteClass{{ i }}();
+{% endfor %}
+        }
+        const default_action = nop();
+    }
+
+    apply {
+        Dispatch.apply();
+    }
+}
+
+// Computes the argmax of the per-class vote counters as a sequence of pairwise
+// comparisons and stores it in votes.majority_class. A class only replaces the
+// current best on a strictly greater count, so ties are won by the lower index.
+control ComputeMajority(
+    inout Votes_t votes
+)
+{
+    apply {
+        bit<8> best_count;
+        Class_t best_idx;
+
+        // Argmax over the 0-based vote counters; ties go to the lower index.
+        best_count = votes.votes_class_0;
+        best_idx = (Class_t) 0;
+{% for i in range(1, n_classes) %}
+        if (votes.votes_class_{{ i }} > best_count) {
+            best_count = votes.votes_class_{{ i }};
+            best_idx = (Class_t) {{ i }};
+        }
+{% endfor %}
+
+        // Emit the consensus as a 1-based class id to match the rest of the
+        // pipeline (InferenceModel, fast-path FlowClass, controller, scoring).
+        votes.majority_class = best_idx + 1;
+    }
+}
+#endif
+
+#ifndef INFERENCE_POINT
+    #error "The inference point of the model is not defined"
+#elif INFERENCE_POINT < 1
+    #error "The inference point of the model must be at least 1"
+#endif
+
+#ifndef MODEL_ID
+    #error "The model id is not defined"
+#elif MODEL_ID < 1
+    #error "The model id must be at least 1"
+#endif
+
+control Inference(
+    inout Headers_t hdr,
+    inout Metadata_t meta,
+    inout standard_metadata_t std_meta
+)
+{
+    Hash_t hashes;
+    StatefullFeatures_t statefull_features;
+
+    register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
+#ifdef IS_LAST_MODEL
+    register<bit<1>>(NB_REG_ENTRIES) ControllerWasNotified;
+    bit<1> notified;
+#endif
+
+    Class_t class;
+    bool known;
+
+    bool collision;
+    PktCount_t pkt_count;
+    bool is_new_flow;
+
+    apply {
+        // Fast path: the controller already installed the consensus class for
+        // this flow -> classify directly, no model is run and no vote is cast.
+        IsFlowClassKnownLocally.apply(hdr, meta, known, class);
+        if (known) {
+            hdr.dune.class_type = ClassType_t.FL;
+            hdr.dune.class = class;
+            return;
+        }
+
+        // Stage gating: only the switch holding this model processes the packet.
+        if (hdr.dune.model_id != MODEL_ID - 1) {
+            return;
+        } else {
+            hdr.dune.model_id = MODEL_ID;
+        }
+
+        class = UNKNOWN_CLASS;
+        collision = false;
+        pkt_count = 0;
+
+        // Every switch tracks the flow on its own registers and extracts its
+        // own features.
+        ComputeHashes.apply(hashes, hdr, meta);
+        GetStatefullFeaturesDefaultValues.apply(statefull_features);
+
+        CheckCollisionAndNewFlow.apply(hashes, collision, is_new_flow);
+        if (!collision) {
+            GetPktCount.apply(hashes, pkt_count);
+            if (pkt_count <= INFERENCE_POINT) {
+                UpdateAndGetStatefullFeatures.apply(
+                    hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
+                );
+            }
+        }
+
+        // Classify EVERY packet and cast this switch's vote -- mirroring the
+        // default pipeline, which never leaves a packet unclassified. Below the
+        // inference point, or on a hash collision, the packet is still
+        // classified but at PACKET level with the current (default/partial)
+        // features; from the inference point on we reuse the stored per-switch
+        // result so the flow's vote stays stable until the controller takes over.
+        bool is_pl = (collision || pkt_count < INFERENCE_POINT);
+
+        if (!is_pl && pkt_count > INFERENCE_POINT) {
+            // The vote was already computed on the trigger packet; reuse it.
+            FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
+        } else {
+            InferenceModel.apply(
+                hdr, meta, std_meta, statefull_features, class
+            );
+            // Persist the flow's decided class only at the inference point (the
+            // trigger packet); packet-level packets must not overwrite it, and a
+            // collision must not clobber another flow's stored class.
+            if (!is_pl) {
+                FlowClassBeforeControllerUpdate.write(hashes.reg_idx32, class);
+            }
+        }
+
+        VoteDispatch.apply(hdr.votes, class);
+        ComputeMajority.apply(hdr.votes);
+
+        if (is_pl) {
+            hdr.dune.class_type = ClassType_t.PL;
+        } else {
+            hdr.dune.class_type = ClassType_t.FL;
+        }
+        hdr.dune.class = hdr.votes.majority_class;
+        if (collision) {
+            hdr.dune.collision = 1;
+        }
+
+#ifdef IS_LAST_MODEL
+        // Notify the controller once per flow, at the inference point (when the
+        // flow's class is decided) -- never on packet-level/collision packets.
+        if (!is_pl) {
+            ControllerWasNotified.read(notified, hashes.reg_idx32);
+            if (notified == 0) {
+                digest<FlowDigest_t>(0, {
+                    hdr.ipv4.src_addr, hdr.ipv4.dst_addr,
+                    meta.src_port, meta.dst_port, hdr.ipv4.protocol,
+                    hdr.dune.mpls_label, hdr.votes.majority_class, hashes.reg_idx,
+                });
+                ControllerWasNotified.write(hashes.reg_idx32, 1);
+            }
+        }
+#endif
+    }
+}
+
+#endif

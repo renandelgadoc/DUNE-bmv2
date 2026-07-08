@@ -1,0 +1,11 @@
+        if (new_flow) {
+            syn_flag_count = 0;
+            WriteSYNFlagCount();
+        } else {
+            ReadSYNFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.syn == 1) {
+            syn_flag_count = syn_flag_count + 1;
+            WriteSYNFlagCount();
+        }
+

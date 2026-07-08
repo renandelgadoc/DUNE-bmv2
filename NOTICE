@@ -1,0 +1,38 @@
+NOTICE
+======
+
+This project contains modified code from the following works by the
+NDS group (IMDEA Networks Institute):
+
+  - DUNE: Distributed Inference in the User Plane
+    https://github.com/nds-group/DUNE
+
+  - DUNE-bmv2 (software switch implementation of DUNE)
+    https://github.com/nds-group/DUNE-bmv2
+
+Copyright of the original code belongs to its respective authors
+(Beyza Bütün, David De Andres Hernandez, Michele Gucciardo, Marco Fiore -
+NDS group, IMDEA Networks Institute). The original repositories do not
+include an open source license; the original code is used here for
+academic research purposes with attribution to the authors.
+
+Modifications and additional code in this repository were made by
+Renan Delgado.
+
+If you use this code or framework in your research, please cite the
+original INFOCOM 2025 paper:
+
+  @INPROCEEDINGS{11044678,
+    author={Bütün, Beyza and De Andres Hernandez, David and Gucciardo, Michele and Fiore, Marco},
+    booktitle={IEEE INFOCOM 2025 - IEEE Conference on Computer Communications},
+    title={DUNE: Distributed Inference in the User Plane},
+    year={2025},
+    pages={1-10},
+    doi={10.1109/INFOCOM55648.2025.11044678}
+  }
+
+This project also references the ToN_IoT dataset (UNSW Canberra,
+https://research.unsw.edu.au/projects/toniot-datasets). The dataset
+files themselves are NOT distributed with this repository; users must
+obtain them from the original source and comply with its terms
+(free for academic research with citation).

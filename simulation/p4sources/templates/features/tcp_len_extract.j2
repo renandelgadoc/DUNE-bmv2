@@ -1,0 +1,6 @@
+        if (hdr.ipv4.protocol == IPv4Proto.TCP) {
+            features.tcp_len = hdr.tcp.data_offset;
+        } else {
+            features.tcp_len = 0;
+        }
+

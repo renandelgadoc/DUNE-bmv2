@@ -1,0 +1,6 @@
+        if (hdr.ipv4.protocol == IPv4Proto.UDP) {
+            features.udp_len = hdr.udp.length;
+        } else {
+            features.udp_len = 0;
+        }
+

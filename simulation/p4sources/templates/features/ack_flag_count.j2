@@ -1,0 +1,7 @@
+    action ReadACKFlagCount() {
+        flows_ack_flag_count.read(ack_flag_count, hashes.reg_idx32);
+    }
+    action WriteACKFlagCount() {
+        ack_flag_count = ack_flag_count + 1;
+        flows_ack_flag_count.write(hashes.reg_idx32, ack_flag_count);
+    }

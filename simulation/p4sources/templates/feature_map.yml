@@ -1,0 +1,245 @@
+# Feature mapping: ML feature name -> P4 properties
+# type: "packet" (extracted from headers) or "stateful" (register-based)
+# bit_width: P4 bit width of the field
+# struct_field: field name in Features_t or StatefullFeatures_t
+# key_expr: expression used in table key
+# extract_template: template name for extraction in InferenceModel apply (packet features)
+# update_logic: template name for register actions + apply (stateful features)
+# reg_name: register name (stateful features)
+
+# --- Packet-level features ---
+
+ip.len:
+  type: packet
+  struct_field: ip_len
+  bit_width: 16
+  key_expr: "features.ip_len"
+  extract_template: ip_len
+
+ip.ttl:
+  type: packet
+  struct_field: ip_ttl
+  bit_width: 8
+  key_expr: "features.ip_ttl"
+  extract_template: ip_ttl
+
+ip.proto:
+  type: packet
+  struct_field: ip_proto
+  bit_width: 8
+  key_expr: "features.ip_proto"
+  extract_template: ip_proto
+
+ip.hdr_len:
+  type: packet
+  struct_field: ip_hdr_len
+  bit_width: 4
+  key_expr: "features.ip_hdr_len"
+  extract_template: ip_hdr_len
+
+srcport:
+  type: packet
+  struct_field: src_port
+  bit_width: 16
+  key_expr: "features.src_port"
+  extract_template: src_port
+
+dstport:
+  type: packet
+  struct_field: dst_port
+  bit_width: 16
+  key_expr: "features.dst_port"
+  extract_template: dst_port
+
+tcp.window_size_value:
+  type: packet
+  struct_field: tcp_window
+  bit_width: 16
+  key_expr: "features.tcp_window"
+  extract_template: tcp_window
+
+tcp.hdr_len:
+  type: packet
+  struct_field: tcp_len
+  bit_width: 4
+  key_expr: "features.tcp_len"
+  extract_template: tcp_len
+
+udp.length:
+  type: packet
+  struct_field: udp_len
+  bit_width: 16
+  key_expr: "features.udp_len"
+  extract_template: udp_len
+
+tcp.flags.syn:
+  type: packet
+  struct_field: tcp_syn
+  bit_width: 1
+  key_expr: "features.tcp_syn"
+  extract_template: tcp_syn
+
+tcp.flags.ack:
+  type: packet
+  struct_field: tcp_ack
+  bit_width: 1
+  key_expr: "features.tcp_ack"
+  extract_template: tcp_ack
+
+tcp.flags.push:
+  type: packet
+  struct_field: tcp_psh
+  bit_width: 1
+  key_expr: "features.tcp_psh"
+  extract_template: tcp_psh
+
+tcp.flags.fin:
+  type: packet
+  struct_field: tcp_fin
+  bit_width: 1
+  key_expr: "features.tcp_fin"
+  extract_template: tcp_fin
+
+tcp.flags.reset:
+  type: packet
+  struct_field: tcp_rst
+  bit_width: 1
+  key_expr: "features.tcp_rst"
+  extract_template: tcp_rst
+
+tcp.flags.ece:
+  type: packet
+  struct_field: tcp_ece
+  bit_width: 1
+  key_expr: "features.tcp_ece"
+  extract_template: tcp_ece
+
+# --- Stateful features (register-based) ---
+
+Packet Length Total:
+  type: stateful
+  struct_field: total_length
+  bit_width: 16
+  key_expr: "statefull_features.total_length"
+  reg_name: flows_total_length
+  update_logic: total_length
+
+Packet Length Mean:
+  type: stateful
+  struct_field: mean_length
+  bit_width: 16
+  key_expr: "statefull_features.mean_length"
+  reg_name: flows_mean_length
+  update_logic: mean_length
+
+Min Packet Length:
+  type: stateful
+  struct_field: min_length
+  bit_width: 16
+  key_expr: "statefull_features.min_length"
+  reg_name: flows_min_length
+  update_logic: min_length
+
+Max Packet Length:
+  type: stateful
+  struct_field: max_length
+  bit_width: 16
+  key_expr: "statefull_features.max_length"
+  reg_name: flows_max_length
+  update_logic: max_length
+
+UDP Len Min:
+  type: stateful
+  struct_field: udp_len_min
+  bit_width: 16
+  key_expr: "statefull_features.udp_len_min"
+  reg_name: flows_udp_len_min
+  update_logic: udp_len_min
+
+UDP Len Max:
+  type: stateful
+  struct_field: udp_len_max
+  bit_width: 16
+  key_expr: "statefull_features.udp_len_max"
+  reg_name: flows_udp_len_max
+  update_logic: udp_len_max
+
+Flow IAT Min:
+  type: stateful
+  struct_field: iat_min
+  bit_width: 32
+  key_expr: "statefull_features.iat_min"
+  reg_name: flows_iat_min
+  update_logic: iat_min
+
+Flow IAT Max:
+  type: stateful
+  struct_field: iat_max
+  bit_width: 32
+  key_expr: "statefull_features.iat_max"
+  reg_name: flows_iat_max
+  update_logic: iat_max
+
+Flow IAT Mean:
+  type: stateful
+  struct_field: iat_mean
+  bit_width: 32
+  key_expr: "statefull_features.iat_mean"
+  reg_name: flows_iat_mean
+  update_logic: iat_mean
+
+Flow Duration:
+  type: stateful
+  struct_field: flow_duration
+  bit_width: 32
+  key_expr: "statefull_features.flow_duration"
+  reg_name: flows_duration
+  update_logic: flow_duration
+
+SYN Flag Count:
+  type: stateful
+  struct_field: syn_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.syn_flag_count"
+  reg_name: flows_syn_flag_count
+  update_logic: syn_flag_count
+
+ACK Flag Count:
+  type: stateful
+  struct_field: ack_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.ack_flag_count"
+  reg_name: flows_ack_flag_count
+  update_logic: ack_flag_count
+
+PSH Flag Count:
+  type: stateful
+  struct_field: psh_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.psh_flag_count"
+  reg_name: flows_psh_flag_count
+  update_logic: psh_flag_count
+
+FIN Flag Count:
+  type: stateful
+  struct_field: fin_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.fin_flag_count"
+  reg_name: flows_fin_flag_count
+  update_logic: fin_flag_count
+
+RST Flag Count:
+  type: stateful
+  struct_field: rst_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.rst_flag_count"
+  reg_name: flows_rst_flag_count
+  update_logic: rst_flag_count
+
+ECE Flag Count:
+  type: stateful
+  struct_field: ece_flag_count
+  bit_width: 8
+  key_expr: "statefull_features.ece_flag_count"
+  reg_name: flows_ece_flag_count
+  update_logic: ece_flag_count

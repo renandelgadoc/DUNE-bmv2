@@ -1,0 +1,7 @@
+    action ReadPSHFlagCount() {
+        flows_psh_flag_count.read(psh_flag_count, hashes.reg_idx32);
+    }
+    action WritePSHFlagCount() {
+        psh_flag_count = psh_flag_count + 1;
+        flows_psh_flag_count.write(hashes.reg_idx32, psh_flag_count);
+    }

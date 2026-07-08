@@ -1,0 +1,6 @@
+    action ReadIATMean() {
+        flows_iat_mean.read(iat_mean, hashes.reg_idx32);
+    }
+    action WriteIATMean() {
+        flows_iat_mean.write(hashes.reg_idx32, iat_mean);
+    }

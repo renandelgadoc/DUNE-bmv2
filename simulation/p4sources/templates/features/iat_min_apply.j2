@@ -1,0 +1,13 @@
+        // NOTE: meta.iat must be computed in the ingress parser before this
+        // template is used (it is not defined in the default Metadata_t).
+        if (new_flow) {
+            iat_min = 0;
+            WriteIATMin();
+        } else {
+            ReadIATMin();
+            if (iat_min == 0 || iat_min > meta.iat) {
+                iat_min = meta.iat;
+                WriteIATMin();
+            }
+        }
+

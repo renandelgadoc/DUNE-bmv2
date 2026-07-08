@@ -1,0 +1,6 @@
+    action ReadMeanLength() {
+        flows_mean_length.read(mean_length, hashes.reg_idx32);
+    }
+    action WriteMeanLength() {
+        flows_mean_length.write(hashes.reg_idx32, mean_length);
+    }

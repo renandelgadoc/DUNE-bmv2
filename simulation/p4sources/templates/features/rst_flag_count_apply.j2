@@ -1,0 +1,11 @@
+        if (new_flow) {
+            rst_flag_count = 0;
+            WriteRSTFlagCount();
+        } else {
+            ReadRSTFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.rst == 1) {
+            rst_flag_count = rst_flag_count + 1;
+            WriteRSTFlagCount();
+        }
+

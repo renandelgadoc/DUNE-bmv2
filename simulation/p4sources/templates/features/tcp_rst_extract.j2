@@ -1,0 +1,6 @@
+        if (hdr.ipv4.protocol == IPv4Proto.TCP) {
+            features.tcp_rst = hdr.tcp.rst;
+        } else {
+            features.tcp_rst = 0;
+        }
+

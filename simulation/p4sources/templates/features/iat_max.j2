@@ -1,0 +1,6 @@
+    action ReadIATMax() {
+        flows_iat_max.read(iat_max, hashes.reg_idx32);
+    }
+    action WriteIATMax() {
+        flows_iat_max.write(hashes.reg_idx32, iat_max);
+    }

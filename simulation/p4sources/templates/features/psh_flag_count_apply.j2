@@ -1,0 +1,11 @@
+        if (new_flow) {
+            psh_flag_count = 0;
+            WritePSHFlagCount();
+        } else {
+            ReadPSHFlagCount();
+        }
+        if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.psh == 1) {
+            psh_flag_count = psh_flag_count + 1;
+            WritePSHFlagCount();
+        }
+

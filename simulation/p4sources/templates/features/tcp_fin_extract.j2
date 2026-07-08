@@ -1,0 +1,6 @@
+        if (hdr.ipv4.protocol == IPv4Proto.TCP) {
+            features.tcp_fin = hdr.tcp.fin;
+        } else {
+            features.tcp_fin = 0;
+        }
+
