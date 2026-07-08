@@ -25,7 +25,6 @@ The project is organized as a linear pipeline: each ML step lives in its own dir
 4. **`ofsp_partitioning/`** — Feature-based partitioning solver (OFSP), the contribution of this work.
 5. **`cluster_analysis/`** — Trains the per-cluster Random Forest sub-models and evaluates their F1 score.
 6. **`model_sequencing/`** — Orders the sub-models across switches to optimize inference performance.
-7. **`dune_tutorial.ipynb`** — Walkthrough notebook covering the pipeline steps.
 
 *Each module has its own `src/params.ini` for configuration.*
 

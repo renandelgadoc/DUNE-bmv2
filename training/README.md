@@ -10,9 +10,6 @@ The deployment of Machine Learning (ML) models in the user plane, enabling line-
 
 Previous solutions have focused on implementing monolithic ML models within individual programmable network devices, which are limited by hardware constraints. In this paper, we propose `DUNE`, a novel framework that realizes for the first time user plane inference distributed across multiple programmable network devices. `DUNE` adopts fully automated approaches to (i) break large ML models into simpler sub-models that preserve inference accuracy while minimizing resource usage, and (ii) design the sub-models and their sequencing to enable an efficient distributed execution of joint packet- and flow-level inference.
 
-## Tutorial
-A comprehensive tutorial is available as a Jupyter notebook (`dune_tutorial.ipynb`). We strongly encourage users to explore this notebook as a starting point for getting acquainted with the DUNE framework and its pipeline steps.
-
 ## EXTENSION: DUNE in Software Switches (bmv2) and Arbitrary Topologies
 **`dune-bmv2/` (Submodule)**: This directory is a Git submodule corresponding to a software switch (bmv2) implementation of DUNE that enables reproducing the data-plane execution of DUNE in Mininet. It includes P4 programs, Mininet scripts, and instructions for setting up the environment and running the experiments. User without Hardware switches can use this submodule to validate the DUNE framework in a software-based environment.
 
