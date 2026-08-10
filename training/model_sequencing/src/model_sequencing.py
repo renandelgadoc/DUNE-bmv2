@@ -313,6 +313,9 @@ if __name__ == '__main__':
     classes_filter = ast.literal_eval(classes_filter)
     flow_counts_test_file_path = config[use_case]['flow_counts_test_file_path'] 
     best_models_path = config[use_case]['best_models_per_cluster_path']
+    # Optional env override for isolated experiments (models_dir_path deriva deste
+    # path logo abaixo, entao o override precisa vir ANTES da derivacao).
+    best_models_path = os.environ.get('MS_BEST_MODELS', best_models_path)
     # Directory holding the trained cluster models (selected_model_cluster{id}.pkl)
     # saved by cluster_analysis. best_models_per_cluster_path points at
     # <results>/perf_results/cluster_info_df.csv, so <results> is two levels up
@@ -322,7 +325,11 @@ if __name__ == '__main__':
     train_data_dir_path = config[use_case]['train_data_dir_path']
     test_data_dir_path = config[use_case]['test_data_dir_path']
     results_dir_path = config[use_case]['results_dir_path']
-    
+    # Optional env override para experimento isolado (nao sobrescrever a sequence
+    # compartilhada em model_sequencing/src/results).
+    results_dir_path = os.environ.get('MS_RESULTS_DIR', results_dir_path)
+    os.makedirs(results_dir_path, exist_ok=True)
+
     # Get the cluster information which is obtained in the previous steps
     clusters_best_model_info = pd.read_csv(best_models_path,
                                            converters=dict.fromkeys(['Class List', 'Feature List'], literal_converter))

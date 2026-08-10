@@ -8,6 +8,13 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
+
+# Optional knob: CA_CLASS_WEIGHT (e.g. 'balanced'). Aplicado SOMENTE em modo
+# ofsp/ensemble -- no SPP cada submodelo e "classe vs Other" (Other = maioria), e
+# balancear faz o submodelo super-emitir a propria classe, o que a cadeia
+# sequencial amplifica e piora o resultado. O gate por partitioning_type esta em
+# cada uso abaixo. Unset -> None -> comportamento padrao.
+_CA_CLASS_WEIGHT = os.environ.get('CA_CLASS_WEIGHT') or None
 from os import path
 from abc import ABC, abstractmethod
 from itertools import compress
@@ -282,7 +289,7 @@ class ModelAnalyzer(ABC):
             for leaf in self.max_leaves_list:
                 # Prepare a model for the given (depth, n_tree, feat)
                 model = RandomForestClassifier(n_estimators=n_tree, max_leaf_nodes=leaf, n_jobs=8, random_state=42,
-                                               bootstrap=False)
+                                               bootstrap=False, class_weight=(_CA_CLASS_WEIGHT if self.partitioning_type in ('ofsp', 'ensemble') else None))
                 # Train (fit) the model with the data
                 model.fit(x_train[feats], y_train, sample_weight=weight_of_samples)
                 # Infer (predict) the labels
@@ -413,7 +420,7 @@ class ModelAnalyzer(ABC):
                             # ToDo: extract method analyse_grid_point to share code with write_simple_analysis
                             # Prepare a model for the given (depth, n_tree, feat, leaves)
                             model = RandomForestClassifier(n_estimators=n_tree, max_leaf_nodes=leaf, max_depth=depth,
-                                                           n_jobs=4, random_state=42, bootstrap=False)
+                                                           n_jobs=4, random_state=42, bootstrap=False, class_weight=(_CA_CLASS_WEIGHT if self.partitioning_type in ('ofsp', 'ensemble') else None))
                             # Train (fit) the model with the data
                             model.fit(x_train[feats], y_train, sample_weight=weight_of_samples)
                             self.logger.info(f'[Grid {_combo_idx}/{_total_combos}] n_tree={n_tree} — predict + scoring...')
@@ -636,7 +643,7 @@ class ModelAnalyzer(ABC):
         max_leaf_nodes = model_info.get('max_leaf_nodes', None)
         model = RandomForestClassifier(n_estimators=model_info['tree'], max_depth=max_depth,
                                        max_leaf_nodes=max_leaf_nodes, n_jobs=4,
-                                       random_state=42, bootstrap=False)
+                                       random_state=42, bootstrap=False, class_weight=(_CA_CLASS_WEIGHT if self.partitioning_type in ('ofsp', 'ensemble') else None))
 
         # Train (fit) the model with the data
         model.fit(x_train[model_info['feats']], y_train, sample_weight=weight_of_samples)

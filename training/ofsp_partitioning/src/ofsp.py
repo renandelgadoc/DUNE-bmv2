@@ -38,6 +38,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score
 
 
 # Fixed number of views (k). Set this once here, or pass k= explicitly to
@@ -49,13 +50,22 @@ N_VIEWS = 5
 # Algorithm 7: Optimal Feature Set Partitioning
 # ---------------------------------------------------------------------------
 
-def _view_accuracy(X, y, feature_idx, clf, sample_weight=None):
+def _view_accuracy(X, y, feature_idx, clf, sample_weight=None, objective='accuracy'):
     """
-    Out-of-bag accuracy of `clf` trained on a feature subset.
+    Out-of-bag score of `clf` trained on a feature subset.
 
     Assumes a bagging-style estimator (RandomForest, ExtraTrees, ...).
     Each tree trains on its bootstrap sample (~63% of rows); the ~37% left
     out are scored for free in the same fit -- one fit, no k-fold retraining.
+
+    `objective` selects what the greedy partitioner maximizes:
+      'accuracy' -> plain (unweighted) OOB accuracy = model.oob_score_ (default,
+                    original behaviour; dominated by the majority classes).
+      'flow_acc' -> OOB accuracy weighted by `sample_weight` (the flow-size
+                    weight), i.e. each flow counts equally -- consistent with
+                    how cluster_analysis trains and how calculate_score scores.
+      'macro_f1' -> unweighted macro-F1 over the OOB predictions, giving every
+                    class an equal vote so minority-class features get credit.
     """
     if not feature_idx:
         return 0.0
@@ -63,10 +73,31 @@ def _view_accuracy(X, y, feature_idx, clf, sample_weight=None):
     model = clone(clf)
     model.set_params(oob_score=True, bootstrap=True)
     model.fit(X[:, feature_idx], y, sample_weight=sample_weight)
-    return float(model.oob_score_)
+    if objective == 'accuracy':
+        return float(model.oob_score_)
+
+    # 'flow_acc' / 'macro_f1' need per-sample OOB predictions. Rows never left
+    # out of any bootstrap have NaN in oob_decision_function_ -- drop them.
+    oob_df = model.oob_decision_function_
+    valid = ~np.isnan(oob_df).any(axis=1)
+    if not valid.any():
+        return 0.0
+    y_pred = model.classes_[np.argmax(oob_df[valid], axis=1)]
+    y_true = y[valid]
+    if objective == 'flow_acc':
+        w = None if sample_weight is None else np.asarray(sample_weight)[valid]
+        return float(accuracy_score(y_true, y_pred, sample_weight=w))
+    if objective == 'macro_f1':
+        # Flow-weighted macro-F1: each class counts equally (macro), and within
+        # each class every sample is weighted by the flow-size weight -- keeps the
+        # objective consistent with flow_acc / cluster_analysis / calculate_score.
+        w = None if sample_weight is None else np.asarray(sample_weight)[valid]
+        return float(f1_score(y_true, y_pred, average='macro', sample_weight=w))
+    raise ValueError(f"unknown objective: {objective!r}")
 
 
-def ofsp_partition(X, y, k=N_VIEWS, clf=None, random_state=0, sample_weight=None):
+def ofsp_partition(X, y, k=N_VIEWS, clf=None, random_state=0, sample_weight=None,
+                   objective='accuracy'):
     """
     Greedily build `k` views from X's feature set, following Algorithm 7.
 
@@ -101,7 +132,7 @@ def ofsp_partition(X, y, k=N_VIEWS, clf=None, random_state=0, sample_weight=None
     seed, remaining = list(feature_order[:k]), list(feature_order[k:])
     views = [[int(f)] for f in seed]
     print(f"  [OFSP] Seeding {k} views...")
-    accuracies = [_view_accuracy(X, y, v, clf, sample_weight) for v in views]
+    accuracies = [_view_accuracy(X, y, v, clf, sample_weight, objective) for v in views]
     for i, (v, a) in enumerate(zip(views, accuracies)):
         print(f"    View {i}: seed feature {v[0]}, OOB={a:.4f}")
     discarded = []
@@ -110,7 +141,7 @@ def ofsp_partition(X, y, k=N_VIEWS, clf=None, random_state=0, sample_weight=None
     for idx, f_new in enumerate(remaining):
         f_new = int(f_new)
         print(f"  [OFSP] Feature {idx+1}/{total_remaining} (col {f_new}): testing {k} views...", end='', flush=True)
-        trial_acc = [_view_accuracy(X, y, v + [f_new], clf, sample_weight) for v in views]
+        trial_acc = [_view_accuracy(X, y, v + [f_new], clf, sample_weight, objective) for v in views]
         gains = [trial_acc[i] - accuracies[i] for i in range(k)]
         best = int(np.argmax(gains))
 

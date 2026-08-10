@@ -153,6 +153,11 @@ def main():
     train_data_dir = config[use_case]['train_data_dir_path']
     flow_counts_path = config[use_case]['flow_counts_train_file_path']
     results_dir = config[use_case]['results_dir_path']
+    # Optional env overrides for isolated experiments (do not touch params.ini).
+    # OFSP_OBJECTIVE selects the greedy partitioning objective; OFSP_RESULTS_DIR
+    # redirects where the solution CSV is written.
+    ofsp_objective = os.environ.get('OFSP_OBJECTIVE', 'accuracy')
+    results_dir = os.environ.get('OFSP_RESULTS_DIR', results_dir)
     classes = ast.literal_eval(config[use_case]['classes_filter'])
     inference_points = ast.literal_eval(config[use_case]['inference_point_list'])
     features_set = config[use_case]['features_set']
@@ -184,10 +189,10 @@ def main():
             X, y, sample_weights = X[idx], y[idx], sample_weights[idx]
             logger.info(f"Final dataset ready: {X.shape[0]} rows")
 
-        logger.info(f"Running OFSP with k={n_views} views...")
+        logger.info(f"Running OFSP with k={n_views} views (objective={ofsp_objective})...")
         views, view_accuracies, discarded = ofsp_partition(
             X, y, k=n_views, clf=clf, random_state=random_state,
-            sample_weight=sample_weights
+            sample_weight=sample_weights, objective=ofsp_objective
         )
 
         # Build cluster_info-compatible CSV

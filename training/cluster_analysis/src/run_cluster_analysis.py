@@ -252,6 +252,10 @@ if __name__ == '__main__':
     max_usable_cores = int(config['DEFAULT']['max_usable_cores'])
     chunksize = int(config['DEFAULT']['chunksize'])
     partitioning_type = config['DEFAULT'].get('partitioning_type', 'spp')
+    # Optional env overrides for isolated experiments (do not touch params.ini):
+    #   CA_PARTITIONING_TYPE -> spp/ofsp, CA_RESULTS_DIR -> output dir,
+    #   CA_CLUSTER_DATA -> cluster/feature-partition solution CSV to train from.
+    partitioning_type = os.environ.get('CA_PARTITIONING_TYPE', partitioning_type)
 
     train_data_dir_path = config[use_case]['train_data_dir_path']
     test_data_dir_path = config[use_case]['test_data_dir_path']
@@ -260,6 +264,7 @@ if __name__ == '__main__':
     flow_counts_train_file_path = config[use_case]['flow_counts_train_file_path']
 
     results_dir_path = config[use_case]['results_dir_path']
+    results_dir_path = os.environ.get('CA_RESULTS_DIR', results_dir_path)
     classes_filter = ast.literal_eval(config[use_case]['classes_filter'])
     features_set = config[use_case]['features_set']
     if features_set not in config['FEATURES']:
@@ -268,6 +273,7 @@ if __name__ == '__main__':
 
     # This is the main input to the program. Should be loaded into an object....
     cluster_data_file_path = config[use_case]['cluster_data_file_path']
+    cluster_data_file_path = os.environ.get('CA_CLUSTER_DATA', cluster_data_file_path)
     cluster_info = pd.read_csv(cluster_data_file_path,
                                converters=dict.fromkeys(['Class List', 'Feature List'], literal_converter))
     raise SystemExit(main())

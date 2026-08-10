@@ -1,36 +1,36 @@
 {
     "m0": {
-        "p4": "ton_iot_m0",
-        "files": [
-            "ton/selected_model_cluster0.pkl"
-        ],
-        "previous": null
-    },
-    "m1": {
         "p4": "ton_iot_m1",
         "files": [
             "ton/selected_model_cluster1.pkl"
         ],
-        "previous": "m0"
+        "previous": null
     },
-    "m2": {
+    "m1": {
         "p4": "ton_iot_m2",
         "files": [
             "ton/selected_model_cluster2.pkl"
         ],
+        "previous": "m0"
+    },
+    "m2": {
+        "p4": "ton_iot_m4",
+        "files": [
+            "ton/selected_model_cluster4.pkl"
+        ],
         "previous": "m1"
     },
     "m3": {
-        "p4": "ton_iot_m3",
+        "p4": "ton_iot_m0",
         "files": [
-            "ton/selected_model_cluster3.pkl"
+            "ton/selected_model_cluster0.pkl"
         ],
         "previous": "m2"
     },
     "m4": {
-        "p4": "ton_iot_m4",
+        "p4": "ton_iot_m3",
         "files": [
-            "ton/selected_model_cluster4.pkl"
+            "ton/selected_model_cluster3.pkl"
         ],
         "previous": "m3"
     }
