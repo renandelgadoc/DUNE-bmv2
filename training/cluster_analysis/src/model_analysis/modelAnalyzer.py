@@ -380,6 +380,9 @@ class ModelAnalyzer(ABC):
 
 
     def write_grid_search(self, signal_handler, tmp_filename, train_data, test_data):
+        # Tag of the log lines, e.g. "TON-IOT_models_3pkts" or "TON-IOT_models_3pkts_Cluster0",
+        # so lines of runs in parallel can be told apart.
+        _run_tag = path.basename(tmp_filename).replace('_tmp.csv', '')
 
         # Get Variables and Labels
         y_multiply_test = test_data['multiply']
@@ -410,7 +413,7 @@ class ModelAnalyzer(ABC):
                 for depth in self.max_depth_list:
                     for leaf in self.max_leaves_list:
                         _combo_idx += 1
-                        self.logger.info(f'[Grid {_combo_idx}/{_total_combos}] n_tree={n_tree}, depth={depth}, leaf={leaf} — fitting...')
+                        self.logger.info(f'[{_run_tag}] [Grid {_combo_idx}/{_total_combos}] n_tree={n_tree}, depth={depth}, leaf={leaf} — fitting...')
                         # get feature orders to use
                         if self.feature_list is not None:
                             m_feats = [self.feature_list]
@@ -423,7 +426,7 @@ class ModelAnalyzer(ABC):
                                                            n_jobs=4, random_state=42, bootstrap=False, class_weight=(_CA_CLASS_WEIGHT if self.partitioning_type in ('ofsp', 'ensemble') else None))
                             # Train (fit) the model with the data
                             model.fit(x_train[feats], y_train, sample_weight=weight_of_samples)
-                            self.logger.info(f'[Grid {_combo_idx}/{_total_combos}] n_tree={n_tree} — predict + scoring...')
+                            self.logger.info(f'[{_run_tag}] [Grid {_combo_idx}/{_total_combos}] n_tree={n_tree} — predict + scoring...')
                             # Infer (predict) the labels
                             y_pred = model.predict(x_test[feats]).tolist()
 
@@ -525,9 +528,10 @@ class ModelAnalyzer(ABC):
                                   str(feats) + ';' + str(num_samples) + ';' + str(macro_f1_PL) + ';' + str(weighted_f1_PL) +
                                   ';' + str(micro_f1_PL) + ';' + str(FL_class_report) + ';' + str(PL_class_report),
                                   file=res_file)
-                            self.logger.info(f'[Grid {_combo_idx}/{_total_combos}] n_tree={n_tree} — macro_f1_FL={macro_f1_FL:.4f}, weighted_f1_FL={weighted_f1_FL:.4f} — done')
+                            self.logger.info(f'[{_run_tag}] [Grid {_combo_idx}/{_total_combos}] n_tree={n_tree} — macro_f1_FL={macro_f1_FL:.4f}, weighted_f1_FL={weighted_f1_FL:.4f} — done')
 
-    GRID_SEARCH_SAMPLE_SIZE = 5_000_000
+    # None: no sampling (train data now ~2.3M rows; previous value 5_000_000).
+    GRID_SEARCH_SAMPLE_SIZE = None
 
     def analyze_model_n_packets(self, npkts, outfile, force=False, grid_search=False):
         """Function for grid search on hyperparameters, features and models"""

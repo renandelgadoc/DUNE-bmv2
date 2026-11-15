@@ -91,13 +91,29 @@ control CheckCollisionAndNewFlow(
         FlowId_t flow_id;
 
         flow_id_used.read(used, hashes.reg_idx32);
+        // if ((bool)used) {
+        //     flow_ids.read(flow_id, hashes.reg_idx32);
+        //     collision = flow_id != hashes.flow_id;
+        //     is_new_flow = false;
+        // } else {
+        //     collision = false;
+        //     is_new_flow = true;
+        //     flow_ids.write(hashes.reg_idx32, hashes.flow_id);
+        // }
+        // Takeover: a flow whose hash falls on an index used by ANOTHER flow takes the
+        // index (it becomes the owner and starts over as a new flow: packet count,
+        // flow features, stored class and controller notification start again). If
+        // the former flow comes back, it takes the index back the same way. The former
+        // rule kept the first owner forever and marked the other flow as a collision,
+        // classified packet by packet until the end.
+        collision = false;
         if ((bool)used) {
             flow_ids.read(flow_id, hashes.reg_idx32);
-            collision = flow_id != hashes.flow_id;
-            is_new_flow = false;
+            is_new_flow = flow_id != hashes.flow_id;
         } else {
-            collision = false;
             is_new_flow = true;
+        }
+        if (is_new_flow) {
             flow_ids.write(hashes.reg_idx32, hashes.flow_id);
         }
         UpdateUsedFlowIds();
@@ -106,12 +122,19 @@ control CheckCollisionAndNewFlow(
 
 control GetPktCount(
     in Hash_t hashes,
+    in bool is_new_flow,
     out PktCount_t pkt_count
 )
 {
     register<PktCount_t>(NB_REG_ENTRIES) pkt_counts;
     apply {
-        pkt_counts.read(pkt_count, hashes.reg_idx32);
+        // pkt_counts.read(pkt_count, hashes.reg_idx32);
+        // A new owner of the index (new flow or takeover) counts from zero.
+        if (is_new_flow) {
+            pkt_count = 0;
+        } else {
+            pkt_counts.read(pkt_count, hashes.reg_idx32);
+        }
         pkt_count = pkt_count + 1;
         pkt_counts.write(hashes.reg_idx32, pkt_count);
     }
@@ -247,8 +270,14 @@ control Inference(
         GetStatefullFeaturesDefaultValues.apply(statefull_features);
 
         CheckCollisionAndNewFlow.apply(hashes, collision, is_new_flow);
+#ifdef IS_LAST_MODEL
+        // A new owner of the index (new flow or takeover) has not notified the controller.
+        if (is_new_flow) {
+            ControllerWasNotified.write(hashes.reg_idx32, 0);
+        }
+#endif
         if (!collision) {
-            GetPktCount.apply(hashes, pkt_count);
+            GetPktCount.apply(hashes, is_new_flow, pkt_count);
             if (pkt_count <= INFERENCE_POINT) {
                 UpdateAndGetStatefullFeatures.apply(
                     hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
@@ -264,12 +293,20 @@ control Inference(
         // result so the flow's vote stays stable until the controller takes over.
         bool is_pl = (collision || pkt_count < INFERENCE_POINT);
 
+        // Before the inference point (or on a collision) the flow features go back to
+        // their default values, as in the default pipeline (p4include/dune_inference.p4,
+        // "Reseting flow features if inference point not reached"): the model is then
+        // fed packet features only, not the partial counts of the first packets.
+        if (is_pl) {
+            GetStatefullFeaturesDefaultValues.apply(statefull_features);
+        }
+
         if (!is_pl && pkt_count > INFERENCE_POINT) {
             // The vote was already computed on the trigger packet; reuse it.
             FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
         } else {
             InferenceModel.apply(
-                hdr, meta, std_meta, statefull_features, class
+                hdr, meta, std_meta, statefull_features, is_pl, class
             );
             // Persist the flow's decided class only at the inference point (the
             // trigger packet); packet-level packets must not overwrite it, and a

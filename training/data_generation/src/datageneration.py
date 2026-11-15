@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+import os
+
 import numpy as np
 import pandas as pd
 import subprocess
@@ -37,6 +39,9 @@ class DataGenerationConfig:
     inference_points_list: List[int]  # A list of inference points
     ground_truth_path: str  # The path to the ground truth data (pcap files)
     split: str  # 'train' or 'test'
+    # Connections with their time window (see generate_dataset_with_flowid.py).
+    # When set, packets are labeled by 5-tuple and time instead of 5-tuple only.
+    connections_path: str = None
 
 
 
@@ -75,6 +80,7 @@ def parse_tshark_csv_to_dataframe(filename_in):
     dtypes["eth.src"] = "str"
     dtypes["eth.dst"] = "str"
     dtypes["frame.time_relative"] = "float"
+    dtypes["frame.time_epoch"] = "float64"
 
     for col in [
         "tcp.flags.syn",
@@ -87,7 +93,7 @@ def parse_tshark_csv_to_dataframe(filename_in):
         dtypes[col] = "boolean"
 
     # ToDo: this hardcodes the pcap columns. Make this configurable
-    packet_data_cols = ["frame.time_relative","ip.src","ip.dst","tcp.srcport","tcp.dstport","ip.len",
+    packet_data_cols = ["frame.number","frame.time_relative","frame.time_epoch","ip.src","ip.dst","tcp.srcport","tcp.dstport","ip.len",
                     "tcp.flags.syn", "tcp.flags.ack", "tcp.flags.push", "tcp.flags.fin",
                     "tcp.flags.reset", "tcp.flags.ece","ip.proto", "udp.srcport", "udp.dstport",
                     "eth.src","eth.dst", "ip.hdr_len", "ip.tos", "ip.ttl", "tcp.window_size_value",
@@ -156,12 +162,119 @@ def label_packet_data(packet_data: pd.DataFrame, config: DataGenerationConfig):
         packet_data = packet_data[packet_data['Label']!="MacBook/Iphone"]
         packet_data = packet_data.reset_index(drop=True)
 
+    # With the connection windows (connections.csv), a packet is labeled by its 5-tuple
+    # AND its time, so packets of connections outside the ground truth are dropped.
+    if config.use_case == "TON-IOT" and config.connections_path:
+        return label_packets_by_time(packet_data, config.connections_path)
+
+    # Without them, a packet is labeled by its 5-tuple only.
     if config.use_case == "TON-IOT":
+        # .set_index("Flow ID")["Label"].to_dict(): dictionary Flow ID -> class.
+        # The second dictionary does the same for the inverse direction, and | joins
+        # both, so packets of either direction find their flow.
         flow_id_label_dict = label_data.set_index("Flow ID")["Label"].to_dict()
         flow_id_label_dict = flow_id_label_dict | label_data.set_index("Flow ID Inv")["Label"].to_dict()
         packet_data.loc[packet_data['Flow ID'].isin(flow_id_label_dict.keys()), "Label"] = packet_data["Flow ID"].map(flow_id_label_dict)
+        if "Split" in label_data.columns:
+            # Same for the train/test split of the flow: Flow ID -> "train"/"test".
+            # .map(dictionary): each packet gets the value of its Flow ID, or NaN.
+            flow_id_split_dict = label_data.set_index("Flow ID")["Split"].to_dict()
+            flow_id_split_dict = flow_id_split_dict | label_data.set_index("Flow ID Inv")["Split"].to_dict()
+            packet_data["Split"] = packet_data["Flow ID"].map(flow_id_split_dict)
 
     return packet_data
+
+def undirected_flow_id(flow_ids: pd.Series) -> pd.Series:
+    """Same key for both directions: the smaller of the Flow ID and its inverse."""
+    # .str.split(" ", expand=True): splits "src dst sport dport proto" into 5 columns
+    # (0 = src, 1 = dst, 2 = sport, 3 = dport, 4 = proto).
+    parts = flow_ids.str.split(" ", expand=True)
+    # The same flow seen from the other side: "dst src dport sport proto".
+    inverse = parts[1] + " " + parts[0] + " " + parts[3] + " " + parts[2] + " " + parts[4]
+    # np.where(condition, a, b): a where the condition is True, b elsewhere. Keeps the
+    # alphabetically smaller text, so both directions give the same key.
+    # index=flow_ids.index: keeps the row numbers of the input.
+    return pd.Series(np.where(flow_ids < inverse, flow_ids, inverse), index=flow_ids.index)
+
+
+def match_packets_to_connections(packets: pd.DataFrame, connections: pd.DataFrame) -> pd.DataFrame:
+    """
+    Match each packet to the ground truth connection whose window [start, end] holds its
+    absolute time (frame.time_epoch), among the connections of its undirected 5-tuple
+    (column '_key'). The connection that started last is used; when it already ended,
+    the earlier connection of the same 5-tuple whose window ends last is used, so a long
+    connection still gets its packets after a shorter one started. Returns the matched
+    packets with the Label, Split and row ('conn') of their connection; packets outside
+    every window are left out.
+    """
+    # Connections sorted by 5-tuple and start time, numbered 0, 1, 2... ("conn").
+    # kind="stable": rows with equal values keep their original order.
+    connections = connections.sort_values(["key", "start"], kind="stable").reset_index(drop=True)
+    connections["conn"] = connections.index
+    # .groupby("key")["end"].cummax(): for each connection, the latest end among it and
+    # the connections of the same 5-tuple that started before it. If a packet comes
+    # after the end of the latest connection but before max_end, an earlier connection
+    # of the same 5-tuple is still open.
+    connections["max_end"] = connections.groupby("key")["end"].cummax()
+    # True on the connections that hold that latest end themselves.
+    holds_max = connections["end"] >= connections["max_end"]
+    # Which connection holds max_end: .where(holds_max) keeps "conn" only on those rows
+    # (NaN elsewhere); .groupby("key").ffill() fills each NaN with the last value above
+    # it within the same 5-tuple. .astype("int64"): back to integers.
+    connections["max_conn"] = (connections["conn"].where(holds_max)
+                               .groupby(connections["key"]).ffill().astype("int64"))
+
+    # pd.merge_asof needs both sides sorted by the time columns it compares.
+    packets = packets.sort_values("frame.time_epoch", kind="stable")
+    right = connections.sort_values("start", kind="stable")[["key", "start", "end", "max_end", "conn", "max_conn"]]
+    # pd.merge_asof: for each packet, the connection with the same 5-tuple
+    # (left_by="_key" equals right_by="key") whose start is the closest one at or
+    # before the packet time (direction="backward"), that is, the connection of that
+    # 5-tuple that started last before the packet. A packet with no such connection
+    # gets NaN in the connection columns.
+    matched = pd.merge_asof(packets, right, left_on="frame.time_epoch", right_on="start",
+                            left_by="_key", right_by="key", direction="backward")
+    time = matched["frame.time_epoch"]
+    # own: that connection is still open at the packet time (time <= end).
+    own = time <= matched["end"]
+    # earlier: it already ended, but an earlier connection of the same 5-tuple is
+    # still open (time <= max_end). NaN compares as False, so unmatched packets are
+    # neither own nor earlier.
+    earlier = ~own & (time <= matched["max_end"])
+    # Keeps only the packets inside some window; the rest are dropped.
+    matched = matched[own | earlier].copy()
+    # The connection of each packet: its own, or the earlier one still open.
+    matched["conn"] = np.where(own[own | earlier], matched["conn"], matched["max_conn"]).astype("int64")
+    # array[positions]: the Label and Split of the chosen connection of each packet.
+    matched["Label"] = connections["Label"].to_numpy()[matched["conn"].to_numpy()]
+    matched["Split"] = connections["Split"].to_numpy()[matched["conn"].to_numpy()]
+    # Removes the helper columns; keeps the packet columns, conn, Label and Split.
+    return matched.drop(columns=["key", "start", "end", "max_end", "max_conn"]).reset_index(drop=True)
+
+
+def label_packets_by_time(packet_data: pd.DataFrame, connections_path: str) -> pd.DataFrame:
+    """
+    Give each packet the Label and Split of the ground truth connection it belongs to:
+    same 5-tuple in either direction and an absolute time (frame.time_epoch) inside the
+    connection window [start, end]. Packets outside every window are dropped.
+    """
+    # One row per connection: key, start, end, Label, Split, expected_pkts.
+    # dtype: reads the 5-tuple, class and split as text and the times as decimals.
+    connections = pd.read_csv(connections_path, dtype={"key": str, "Label": str, "Split": str,
+                                                       "start": "float64", "end": "float64"})
+    # Undirected 5-tuple of each packet, comparable to connections["key"].
+    packet_data["_key"] = undirected_flow_id(packet_data["Flow ID"])
+    # Keeps only packets whose 5-tuple has a connection in the ground truth; most
+    # packets of the pcap are dropped here, which keeps the matching below small.
+    packets = packet_data[packet_data["_key"].isin(set(connections["key"]))]
+    if packets.empty:
+        # No packet of this pcap is in the ground truth: empty table with the columns
+        # the caller expects (.assign adds the empty Label and Split columns).
+        return packets.drop(columns="_key").assign(Label=pd.Series(dtype=str), Split=pd.Series(dtype=str))
+    labeled = match_packets_to_connections(packets, connections)
+    # Removes the helper columns.
+    return labeled.drop(columns=["_key", "conn"])
+
 
 def process_pcap_to_csv(pcap_file, output_file):
     """
@@ -185,7 +298,8 @@ def process_pcap_to_csv(pcap_file, output_file):
     """
     command = [
         "tshark", "-r", pcap_file, "-Y", "not icmp and (tcp or udp)", "-T", "fields",
-        "-e", "frame.time_relative", "-e", "ip.src", "-e", "ip.dst",
+        "-e", "frame.number", "-e", "frame.time_relative", "-e", "frame.time_epoch",
+        "-e", "ip.src", "-e", "ip.dst",
         "-e", "tcp.srcport", "-e", "tcp.dstport", "-e", "ip.len",
         "-e", "tcp.flags.syn", "-e", "tcp.flags.ack", "-e", "tcp.flags.push",
         "-e", "tcp.flags.fin", "-e", "tcp.flags.reset", "-e", "tcp.flags.ece",
@@ -197,6 +311,55 @@ def process_pcap_to_csv(pcap_file, output_file):
 
     with open(output_file, "w") as out_file:
         subprocess.run(command, stdout=out_file, check=True)
+
+def frames_to_ranges(frame_numbers):
+    """Compact sorted frame numbers into editcap selections such as '3-90'."""
+    ranges = []
+    start = previous = None
+    for frame in frame_numbers:
+        if start is None:
+            # First frame: opens a range.
+            start = previous = frame
+        elif frame == previous + 1:
+            # Next frame in sequence: extends the open range.
+            previous = frame
+        else:
+            # Gap: closes the open range ("3-90", or "3" for a single frame) and opens
+            # a new one.
+            ranges.append(f"{start}-{previous}" if previous != start else f"{start}")
+            start = previous = frame
+    # Closes the last range.
+    if start is not None:
+        ranges.append(f"{start}-{previous}" if previous != start else f"{start}")
+    return ranges
+
+
+def extract_frames(pcap_file, frame_numbers, output_file, block_size=500):
+    """
+    Copy the selected frames of pcap_file to output_file with editcap, in
+    blocks because editcap silently ignores selections beyond 512, joining the
+    blocks with mergecap.
+    """
+    ranges = frames_to_ranges(sorted(int(frame) for frame in frame_numbers))
+    parts = []
+    try:
+        # One editcap per block of up to block_size ranges. "editcap -r in out 3-90 95"
+        # keeps (-r) only those frames of the input pcap.
+        for i in range(0, len(ranges), block_size):
+            part = f"{output_file}.part{len(parts)}"
+            subprocess.run(["editcap", "-r", pcap_file, part] + ranges[i:i + block_size], check=True)
+            parts.append(part)
+        if len(parts) == 1:
+            os.replace(parts[0], output_file)
+        else:
+            # Joins the blocks into one pcap, in time order.
+            subprocess.run(["mergecap", "-w", output_file] + parts, check=True)
+    finally:
+        # Removes the block files, even if editcap or mergecap failed.
+        for part in parts:
+            if os.path.exists(part):
+                os.remove(part)
+
 
 def get_flow_length(data_config: DataGenerationConfig, split: str):
     """

@@ -185,7 +185,7 @@ def main():
         support = flow_pkt_counts['label'].value_counts().loc[classes].sort_index()
 
     logger.info("Selecting the best models for each cluster...")
-    best_models_df = select_best_models_per_cluster(cluster_info, results_dir_path)
+    best_models_df = select_best_models_per_cluster(cluster_info, results_dir_path, inference_points_list)
     cluster_info = append_best_models_info_to_cluster_info(cluster_info, best_models_df)
 
     logger.info("Generating and saving best models for each cluster...")
@@ -256,6 +256,11 @@ if __name__ == '__main__':
     #   CA_PARTITIONING_TYPE -> spp/ofsp, CA_RESULTS_DIR -> output dir,
     #   CA_CLUSTER_DATA -> cluster/feature-partition solution CSV to train from.
     partitioning_type = os.environ.get('CA_PARTITIONING_TYPE', partitioning_type)
+    # class_weight from params.ini ([DEFAULT]); CA_CLASS_WEIGHT, when set, overrides it.
+    # Empty means no class weight. modelAnalyzer applies it only in ofsp mode.
+    import model_analysis.modelAnalyzer as _model_analyzer
+    _model_analyzer._CA_CLASS_WEIGHT = os.environ.get(
+        'CA_CLASS_WEIGHT', config['DEFAULT'].get('class_weight', '')).strip() or None
 
     train_data_dir_path = config[use_case]['train_data_dir_path']
     test_data_dir_path = config[use_case]['test_data_dir_path']
@@ -265,6 +270,8 @@ if __name__ == '__main__':
 
     results_dir_path = config[use_case]['results_dir_path']
     results_dir_path = os.environ.get('CA_RESULTS_DIR', results_dir_path)
+    # The analysis workers write into this folder, so it must exist before they start.
+    os.makedirs(results_dir_path, exist_ok=True)
     classes_filter = ast.literal_eval(config[use_case]['classes_filter'])
     features_set = config[use_case]['features_set']
     if features_set not in config['FEATURES']:

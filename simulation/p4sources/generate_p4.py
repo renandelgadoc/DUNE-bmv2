@@ -207,6 +207,9 @@ def build_model_context(model_path, cluster_id, cluster_row, class_offset, infer
             "used_codes": [t for t in range(n_trees) if tree_code_sizes[t][i] > 0],
             "table_size": table_sizes[i],
             "key_expr": fmap["key_expr"],
+            # Flow (stateful) feature: its table is skipped before the inference point
+            # (model.p4.j2), as its value is -1 in the training data there.
+            "is_flow_feature": fmap["type"] != "packet",
         }
         features_info.append(info)
 
@@ -251,6 +254,12 @@ def build_model_context(model_path, cluster_id, cluster_row, class_offset, infer
         "class_offset": class_offset,
         "unknown_class_id": unknown_class_id,
         "n_classes": n_classes,
+        # The voting table between the trees of the model has one entry per
+        # combination of tree votes (convert_RF_and_populate_tables.py inserts
+        # itertools.product(classes, repeat=n_trees)): len(classes_) ** n_trees.
+        # The former fixed size of 64 only held 4 classes with 3 trees; with 8 classes
+        # the insertion failed after 64 entries and most vote combinations had no entry.
+        "voting_table_size": len(clf.classes_) ** n_trees,
     }
     return context, n_classes
 

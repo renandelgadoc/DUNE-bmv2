@@ -53,15 +53,60 @@ Activate the Python virtual environment created by the installation script befor
 source ~/p4-guide/p4dev-python-venv/bin/activate
 ```
 
-The ML pipeline steps under `training/` isolate their dependencies per directory:
+Install the Python packages of the training pipeline in the same environment:
 
 ```bash
-pip install -r <directory_name>/requirements.txt
+pip install -r requirements.txt
 ```
 
-## Required Data Files
+Model sequencing solves a small TSP with Pyomo and Gurobi. The `gurobipy` package from pip ships a size-limited license that is enough for five sub-models; no license file is needed.
 
-The ToN_IoT dataset files are **not** distributed with this repository. Obtain them from the [original source](https://research.unsw.edu.au/projects/toniot-datasets) (free for academic research with citation) and place them in a `data/` directory, following the paths expected in each step's `params.ini` and in `simulation/utils/params.ini`.
+System tools used by the data generation and the simulation: `tshark`, `editcap`, `mergecap` and `capinfos` (Wireshark CLI), `pcapfix` and `tcpreplay`:
+
+```bash
+sudo apt install tshark pcapfix tcpreplay
+```
+
+The simulation starts Mininet with `sudo`; the commands below assume `sudo` works without a password prompt.
+
+## Running the Pipeline
+
+Each step runs from its own `src/` folder and reads its `params.ini` (section `[TON-IOT]`). The defaults use the seven ToN-IoT classes of the original DUNE configuration, the 24 features of `feats_no_time` and the inference point n = 3.
+
+1. **Data** (`training/data_generation/src`). The ToN_IoT dataset is **not** distributed with this repository; download it from the [original source](https://research.unsw.edu.au/projects/toniot-datasets) (free for academic research with citation) and place the files in these folders of `training/data_generation/src/`:
+
+   | Folder | Files | ToN-IoT folder |
+   |---|---|---|
+   | `ground_truth/` | `train_test_network.csv` only | `Train_Test_datasets/Train_Test_Network_dataset/` |
+   | `ground_truth_full/` | `Network_dataset_1.csv` to `Network_dataset_23.csv` (or the `Processed_Network_dataset.zip` that holds them) | `Processed_datasets/Processed_Network_dataset/` |
+   | `pcaps_not_processed/` | the raw pcaps, as `.pcap` files (extract the downloaded zips) | `Raw_datasets/network_data/Network_datasets_pcaps/` |
+
+   Then:
+   ```bash
+   python3 prepare_input_pcap.py
+   python3 generate_data.py
+   ```
+   `prepare_input_pcap.py` preprocesses the raw pcaps into `processed_pcaps/`, and `generate_data.py` builds the labels, the train/test split and the data of each inference point in `label/` and `output/` (details in [`training/data_generation/README.md`](training/data_generation/README.md)). The simulation reads `output/test/ToN_IoT_test.pcap` and `output/test/TON-IOT_test_flow_length.csv`; copy them to `simulation/data/`.
+2. **Unconstrained model** (`training/unconstrained_model_analysis/src`):
+   ```bash
+   python3 run_unconstrained_model_analysis.py
+   ```
+3. **Partition**, one of the two strategies:
+   - Default, class partitioning (`training/model_partitioning/src`): `python3 model_partitioning.py`. It writes `TON-IOT_SPP_solution_<date>.csv`.
+   - OFSP, feature partitioning (`training/ofsp_partitioning/src`): `python3 run_ofsp_partitioning.py`. It writes `results/TON-IOT_OFSP_solution_<n>pkts.csv`.
+4. **Sub-models** (`training/cluster_analysis/src`): set `partitioning_type` (`spp` or `ofsp`) in `[DEFAULT]`, `cluster_data_file_path` to the partition of step 3 and `results_dir_path` to `.../cluster_analysis/src/results` for Default or `.../cluster_analysis/src/results_ofsp` for OFSP (the folders the simulation reads), then:
+   ```bash
+   python3 run_cluster_analysis.py
+   ```
+5. **Model sequencing**, Default only (`training/model_sequencing/src`):
+   ```bash
+   python3 model_sequencing.py
+   ```
+6. **Simulation** (`simulation/`): copy the sub-models of step 4 (`training/cluster_analysis/src/results/models/` for Default, `results_ofsp/models/` for OFSP) to `simulation/models/ton/` and run:
+   ```bash
+   make run-ton-iot-test PARTITIONING_TYPE=default   # or PARTITIONING_TYPE=ofsp
+   ```
+   The report is written to `results/<default|ofsp>/run_<date>/classification-report.txt`.
 
 ## Quick Start
 

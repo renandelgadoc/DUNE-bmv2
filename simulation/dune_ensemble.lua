@@ -8,7 +8,7 @@
 -- então pula NUM_CLASSES+1 bytes antes do IPv4.
 --
 -- NUM_CLASSES deve bater com o nº de classes do modelo (len(clf.classes_)).
-local NUM_CLASSES = 6
+local NUM_CLASSES = 7  -- classes of the classes_filter of cluster_analysis/src/params.ini
 
 -- Nome de Proto único (o dune.lua do sistema já usa "dune"); os CAMPOS continuam
 -- "dune.*" pra o tshark/-e e o GUI mostrarem igual. Este registra por último no

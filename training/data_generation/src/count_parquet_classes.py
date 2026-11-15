@@ -14,7 +14,7 @@ import collections
 import csv
 import pyarrow.parquet as pq
 
-DEFAULT = "./training/data_generation/src/output/train/hybrid_data/train_3_pkts.parquet"
+DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output/test/hybrid_data/test_3_pkts.parquet")
 
 
 def main():

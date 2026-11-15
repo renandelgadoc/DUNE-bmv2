@@ -135,7 +135,9 @@ def load_train_data(train_data_dir, flow_counts_path, inference_point, features,
 
 def main():
     basepath = path.dirname(__file__)
-    logging.basicConfig()
+    # Date and time on every log line, e.g. "2026-11-04 20:10:05 INFO:ofsp:...".
+    logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                        datefmt="%Y-%m-%d %H:%M:%S")
     config = configparser.ConfigParser()
     config.read(path.abspath(path.join(basepath, 'params.ini')))
     config['DEFAULT']['training_root'] = path.abspath(path.join(basepath, '..', '..'))
@@ -149,14 +151,16 @@ def main():
 
     logger = logging.getLogger(use_case)
     logger.setLevel(logging.getLevelName(log_level))
+    # Log of each view training inside ofsp_partition (ofsp.py).
+    logging.getLogger('ofsp').setLevel(logging.getLevelName(log_level))
 
     train_data_dir = config[use_case]['train_data_dir_path']
     flow_counts_path = config[use_case]['flow_counts_train_file_path']
     results_dir = config[use_case]['results_dir_path']
-    # Optional env overrides for isolated experiments (do not touch params.ini).
-    # OFSP_OBJECTIVE selects the greedy partitioning objective; OFSP_RESULTS_DIR
-    # redirects where the solution CSV is written.
-    ofsp_objective = os.environ.get('OFSP_OBJECTIVE', 'accuracy')
+    # objective and scope come from params.ini ([DEFAULT]). The environment variables
+    # OFSP_OBJECTIVE, OFSP_SCOPE and OFSP_RESULTS_DIR, when set, override them.
+    ofsp_objective = os.environ.get('OFSP_OBJECTIVE', config['DEFAULT'].get('objective', 'macro_f1'))
+    ofsp_scope = os.environ.get('OFSP_SCOPE', config['DEFAULT'].get('scope', 'ensemble'))
     results_dir = os.environ.get('OFSP_RESULTS_DIR', results_dir)
     classes = ast.literal_eval(config[use_case]['classes_filter'])
     inference_points = ast.literal_eval(config[use_case]['inference_point_list'])
@@ -169,10 +173,9 @@ def main():
     clf = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth,
                                    random_state=random_state, n_jobs=12)
 
-    # Full load was too slow for OFSP, so sample the training data down to 1M
-    # rows: load_train_data does memory-safe per-row-group sampling to ~1.5M, then
-    # the strict stratified subsample below trims to exactly this many rows.
-    ofsp_sample_size = 1_000_000
+    # No sampling: the whole train set is used (~2.3M rows). Set a number of rows
+    # here to sample it down (previous value 1_000_000).
+    ofsp_sample_size = None
 
     for n_point in inference_points:
         logger.info(f"Loading training data for inference point {n_point}...")
@@ -189,10 +192,11 @@ def main():
             X, y, sample_weights = X[idx], y[idx], sample_weights[idx]
             logger.info(f"Final dataset ready: {X.shape[0]} rows")
 
-        logger.info(f"Running OFSP with k={n_views} views (objective={ofsp_objective})...")
+        logger.info(f"Running OFSP with k={n_views} views (objective={ofsp_objective}, scope={ofsp_scope})...")
         views, view_accuracies, discarded = ofsp_partition(
             X, y, k=n_views, clf=clf, random_state=random_state,
-            sample_weight=sample_weights, objective=ofsp_objective
+            sample_weight=sample_weights, objective=ofsp_objective, scope=ofsp_scope,
+            feature_names=feat_names
         )
 
         # Build cluster_info-compatible CSV

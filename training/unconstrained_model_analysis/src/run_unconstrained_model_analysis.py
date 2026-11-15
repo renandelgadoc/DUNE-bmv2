@@ -119,7 +119,7 @@ def main():
     del pool
 
     logger.info("Selecting the best unconstrained model")
-    best_model_info = select_best_unconstained_model(results_dir_path)
+    best_model_info = select_best_unconstained_model(results_dir_path, inference_points_list)
     logger.info(f"The best unconstrained model: {best_model_info}")
     run_model_generation(best_model_info)
 
@@ -149,6 +149,8 @@ if __name__ == '__main__':
     flow_counts_train_file_path = config[use_case]['flow_counts_train_file_path']
 
     results_dir_path = config[use_case]['results_dir_path']
+    # The analysis workers write into this folder, so it must exist before they start.
+    os.makedirs(results_dir_path, exist_ok=True)
     classes_filter = ast.literal_eval(config[use_case]['classes_filter'])
     print(classes_filter)
     features_set = config[use_case]['features_set']

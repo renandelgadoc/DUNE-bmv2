@@ -83,10 +83,13 @@ def total_tcam_usage(models_df):
     return models_df
 
 
-def select_best_models_per_cluster(cluster_info, analysis_files_dir) -> pd.DataFrame:
+def select_best_models_per_cluster(cluster_info, analysis_files_dir, inference_points=None) -> pd.DataFrame:
     """ Selects the best model based on the available model analysis files and the flow pkts data
     :param cluster_info: a Dataframe containing the cluster information, i.e., classes and features information
     :param analysis_files_dir: Path to the analysis files directory
+    :param inference_points: inference points of this run (inference_point_list of params.ini). Only the
+        analysis files of these points are read: the folder can still hold files of other points from
+        earlier runs, with other clusters, and a model chosen from them would be trained at another point.
     :param support: a list with the support values matching the classes list
     :return: a DataFrame with the characteristics of each selected model in each row
     """
@@ -117,6 +120,10 @@ def select_best_models_per_cluster(cluster_info, analysis_files_dir) -> pd.DataF
             cl = int(grep_data[1])
         except Exception as e:
             print(f"Could not parse the file: {file_string} with error: {e} \n Skipping this file. \n")
+            continue
+        # Files of other inference points (left by earlier runs) are not read.
+        if inference_points is not None and n_point not in inference_points:
+            print(f"Skipping {file_string}: inference point {n_point} is not in {inference_points}.")
             continue
 
         model_analysis_for_nth = pd.read_csv(f'{analysis_files_dir}/{file_string}', sep=';',
@@ -307,9 +314,12 @@ def calculate_TOTAL_TCAM_usage(cluster_info, partitioning_type='spp'):
     return total_TCAM
 
 
-def select_best_unconstained_model(analysis_files_dir):
+def select_best_unconstained_model(analysis_files_dir, inference_points=None):
     """ Selects the best model based on the macro f1 score
     :param analysis_files_dir: Path to the analysis folder
+    :param inference_points: inference points of this run (inference_point_list of params.ini). Only the
+        analysis files of these points are read: the folder can still hold files of other points from
+        earlier runs, with other classes.
     :return: the information of selected model as dict
     """
     model_info = {}
@@ -333,6 +343,10 @@ def select_best_unconstained_model(analysis_files_dir):
 
         grep_data = pattern.findall(file_string)
         n_point = int(grep_data[0])
+        # Files of other inference points (left by earlier runs) are not read.
+        if inference_points is not None and n_point not in inference_points:
+            print(f"Skipping {file_string}: inference point {n_point} is not in {inference_points}.")
+            continue
 
         model_analysis_for_nth = pd.read_csv(f'{analysis_files_dir}/{file_string}', sep=';',
                                              converters=dict.fromkeys(['depth', 'feats'], literal_converter))

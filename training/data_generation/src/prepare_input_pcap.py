@@ -346,11 +346,11 @@ def main_single_dir():
             except Exception as e:
                 print(f"\n  [WARN] Failed to process {basename}: {e}, skipping.")
 
-        # Step 2: Split into train/test
-        split_processed_pcaps(PROCESSED_DIR, TRAIN_DIR, TEST_DIR)
-
+        # The train/test split now comes from the flows of the ground truth
+        # (generate_dataset_with_flowid.py). Splitting by file is still
+        # available through --split-only.
         print(f"\n{'='*60}")
-        print("All files processed and split successfully!")
+        print("All files processed successfully!")
         print(f"{'='*60}")
 
     except Exception as e:

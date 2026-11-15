@@ -60,6 +60,9 @@ LEAFS ?= 6
 PODS ?= 4
 HOSTS_PER_LEAF ?= 2
 TEST_PPS ?= 3000
+# Inference point (packets) of the trained models: the N column of CLUSTER_INFO, i.e. the
+# point the sub-models were trained at (the one of the unconstrained model analysis).
+INFERENCE_POINT ?= $(shell python3 -c "import csv, sys; print(int(float(next(csv.DictReader(open(sys.argv[1])))['N'])))" $(CLUSTER_INFO) 2>/dev/null)
 TEST_PCAP ?= ./data/ToN_IoT_test.pcap
 TEST_PCAP_DIR ?= ./utils/experiment_pcaps
 PKT_NUM ?=
@@ -146,6 +149,7 @@ GENERATE_P4 := python3 $(SOURCES_DIR)/generate_p4.py \
     --models-dir $(MODELS_TRAIN_DIR) \
     --output-dir $(GENERATED_P4_DIR) \
     --partitioning-type $(PARTITIONING_TYPE) \
+    --inference-point $(INFERENCE_POINT) \
     --generate-ton-json $(MODELS) \
     $(SEQUENCE_ARG)
 COMPUTE_SCORES := DUNE_RESULTS_DIR=$(RESULTS_DIR) python3 ./utils/calculate_score.py --results $(COMBINED_PCAPS_FILE) --ground-truth $(GROUND_TRUTH_FILE) --outfile $(RESULTS_FILE) --cluster-info $(CLUSTER_INFO) --sequence-file $(MODEL_SEQUENCE) --partitioning-type $(PARTITIONING_TYPE)

@@ -198,7 +198,8 @@ if __name__ == "__main__":
     output_folder = config[use_case]['output_folder']
     
     #
-    eliminated_classes = ['mitm', 'dos', 'backdoor']
+    # Classes left out of the replayed traffic: the ones not in the 7 trained classes.
+    eliminated_classes = ['dos', 'backdoor', 'mitm']
     flow_info_df = pd.read_csv(flow_info_path)
     target_flows = collect_chunked_target_flows(flow_info_df, eliminated_classes, chunksize=500)
     

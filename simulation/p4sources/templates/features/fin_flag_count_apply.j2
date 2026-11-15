@@ -1,11 +1,26 @@
+        // if (new_flow) {
+        //     fin_flag_count = 0;
+        //     WriteFINFlagCount();
+        // } else {
+        //     ReadFINFlagCount();
+        // }
+        // if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.fin == 1) {
+        //     fin_flag_count = fin_flag_count + 1;
+        //     WriteFINFlagCount();
+        // }
+        // WriteFINFlagCount() itself adds 1 and stores the count. The former code
+        // called it on a new flow (count started at 1) and added 1 before calling it
+        // on a flagged packet (+2 per flag). The count is now the number of packets
+        // with the flag, as in the training data.
         if (new_flow) {
             fin_flag_count = 0;
-            WriteFINFlagCount();
         } else {
             ReadFINFlagCount();
         }
         if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.fin == 1) {
-            fin_flag_count = fin_flag_count + 1;
             WriteFINFlagCount();
+        } else if (new_flow) {
+            // New flow without the flag: stores the count 0.
+            flows_fin_flag_count.write(hashes.reg_idx32, fin_flag_count);
         }
 

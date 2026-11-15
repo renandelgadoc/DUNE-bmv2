@@ -1,11 +1,26 @@
+        // if (new_flow) {
+        //     psh_flag_count = 0;
+        //     WritePSHFlagCount();
+        // } else {
+        //     ReadPSHFlagCount();
+        // }
+        // if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.psh == 1) {
+        //     psh_flag_count = psh_flag_count + 1;
+        //     WritePSHFlagCount();
+        // }
+        // WritePSHFlagCount() itself adds 1 and stores the count. The former code
+        // called it on a new flow (count started at 1) and added 1 before calling it
+        // on a flagged packet (+2 per flag). The count is now the number of packets
+        // with the flag, as in the training data.
         if (new_flow) {
             psh_flag_count = 0;
-            WritePSHFlagCount();
         } else {
             ReadPSHFlagCount();
         }
         if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.psh == 1) {
-            psh_flag_count = psh_flag_count + 1;
             WritePSHFlagCount();
+        } else if (new_flow) {
+            // New flow without the flag: stores the count 0.
+            flows_psh_flag_count.write(hashes.reg_idx32, psh_flag_count);
         }
 

@@ -1,11 +1,26 @@
+        // if (new_flow) {
+        //     ece_flag_count = 0;
+        //     WriteECEFlagCount();
+        // } else {
+        //     ReadECEFlagCount();
+        // }
+        // if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.ece == 1) {
+        //     ece_flag_count = ece_flag_count + 1;
+        //     WriteECEFlagCount();
+        // }
+        // WriteECEFlagCount() itself adds 1 and stores the count. The former code
+        // called it on a new flow (count started at 1) and added 1 before calling it
+        // on a flagged packet (+2 per flag). The count is now the number of packets
+        // with the flag, as in the training data.
         if (new_flow) {
             ece_flag_count = 0;
-            WriteECEFlagCount();
         } else {
             ReadECEFlagCount();
         }
         if (hdr.ipv4.protocol == IPv4Proto.TCP && hdr.tcp.ece == 1) {
-            ece_flag_count = ece_flag_count + 1;
             WriteECEFlagCount();
+        } else if (new_flow) {
+            // New flow without the flag: stores the count 0.
+            flows_ece_flag_count.write(hashes.reg_idx32, ece_flag_count);
         }
 

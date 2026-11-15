@@ -4,10 +4,8 @@ For this you can use the python programs and packages under the `src` folder.
 
 ## Getting Started
 
-First, set up your Python virtual environment and install the dependencies:
+Install the dependencies of the whole pipeline from the repository root (see the README there):
 ```bash
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -34,7 +32,6 @@ through this parameter. Comment out fix_level if not desired. Note that the leve
 After configuring the `src/spp_params.ini.example` file you can trigger the analysis by:
 ```bash
 cd src
-source ../venv/bin/activate
 python3 model_partitioning.py
 ```
 You will see logs with the progress of the execution.

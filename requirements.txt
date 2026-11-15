@@ -1,0 +1,19 @@
+# Python packages of the training pipeline (all steps) and of the scoring of the
+# simulation. Install inside the P4 virtual environment (see README).
+numpy
+pandas
+pyarrow
+scikit-learn
+scipy
+joblib
+tabulate
+tqdm
+matplotlib
+PuLP
+Pyomo
+gurobipy
+PyYAML
+Jinja2
+psutil
+networkx
+scapy

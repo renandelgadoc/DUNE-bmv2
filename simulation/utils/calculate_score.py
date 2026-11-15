@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 import argparse
 import sys
 import pprint
@@ -233,23 +234,36 @@ def compute_classification_report(results_df, ground_truth_df, classes, is_defau
         )
 
     # === BINARY: normal (0) vs attack (1) ===
-
+    # A packet the default pipeline left unclassified (P4 UNKNOWN_CLASS = 0) is NOT taken as an
+    # attack: it is a third outcome, "unclassified" (2), that counts as an error for its true
+    # class. So an unclassified attack is a false negative (it lowers the recall of attack) and an
+    # unclassified normal is neither a true negative nor a false positive (it lowers the recall of
+    # normal, i.e. the specificity). The report then has an "unclassified" row with support 0,
+    # as in the multiclass report with unclassified: its F1 is 0 and it enters the macro average,
+    # not the weighted one. In OFSP/ensemble the vote always gives a class, so there is no
+    # unclassified outcome and the report is the plain normal x attack one.
     normal_id = class_mapping.get('normal', 1)
     binary_gt = (labeled_results_csv['ground_truth'] != normal_id).astype(int)
-    binary_pred = (labeled_results_csv['class'] != normal_id).astype(int)
+    binary_pred = np.where(labeled_results_csv['class'] == normal_id, 0, 1)
+    if is_default:
+        binary_pred = np.where(labeled_results_csv['class'] == 0, 2, binary_pred)
+        bin_labels, bin_names = [0, 1, 2], ['normal', 'attack', 'unclassified']
+    else:
+        bin_labels, bin_names = [0, 1], ['normal', 'attack']
 
     binary_text_report = classification_report(
-        binary_gt, binary_pred, labels=[0, 1],
-        target_names=['normal', 'attack'], zero_division=0,
+        binary_gt, binary_pred, labels=bin_labels,
+        target_names=bin_names, zero_division=0,
     )
 
     binary_dict_report = classification_report(
-        binary_gt, binary_pred, labels=[0, 1],
-        target_names=['normal', 'attack'], output_dict=True, zero_division=0,
+        binary_gt, binary_pred, labels=bin_labels,
+        target_names=bin_names, output_dict=True, zero_division=0,
     )
 
-    binary_cm = confusion_matrix(binary_gt, binary_pred, labels=[0, 1])
-    binary_cm_df = pd.DataFrame(binary_cm, index=['normal', 'attack'], columns=['normal', 'attack'])
+    # Rows are the real classes (normal, attack); the unclassified column only exists in default.
+    binary_cm = confusion_matrix(binary_gt, binary_pred, labels=bin_labels)[:2]
+    binary_cm_df = pd.DataFrame(binary_cm, index=['normal', 'attack'], columns=bin_names)
     binary_truth_table_text = "\n" + "="*20 + " BINARY TRUTH TABLE (CONFUSION MATRIX) " + "="*20 + "\n"
     binary_truth_table_text += "Rows = Real Class (Ground Truth)  |  Columns = Guessed Class (Predicted)\n\n"
     binary_truth_table_text += binary_cm_df.to_string() + "\n"
@@ -257,21 +271,21 @@ def compute_classification_report(results_df, ground_truth_df, classes, is_defau
     # === BINARY WEIGHTED (flow-level) ===
 
     binary_weighted_text_report = classification_report(
-        binary_gt, binary_pred, labels=[0, 1],
-        target_names=['normal', 'attack'],
+        binary_gt, binary_pred, labels=bin_labels,
+        target_names=bin_names,
         sample_weight=labeled_results_csv['weight'], zero_division=0,
     )
 
     binary_weighted_dict_report = classification_report(
-        binary_gt, binary_pred, labels=[0, 1],
-        target_names=['normal', 'attack'],
+        binary_gt, binary_pred, labels=bin_labels,
+        target_names=bin_names,
         sample_weight=labeled_results_csv['weight'],
         output_dict=True, zero_division=0,
     )
 
-    binary_weighted_cm = confusion_matrix(binary_gt, binary_pred, labels=[0, 1],
-                                          sample_weight=labeled_results_csv['weight'])
-    binary_weighted_cm_df = pd.DataFrame(binary_weighted_cm, index=['normal', 'attack'], columns=['normal', 'attack'])
+    binary_weighted_cm = confusion_matrix(binary_gt, binary_pred, labels=bin_labels,
+                                          sample_weight=labeled_results_csv['weight'])[:2]
+    binary_weighted_cm_df = pd.DataFrame(binary_weighted_cm, index=['normal', 'attack'], columns=bin_names)
     binary_weighted_truth_table_text = "\n" + "="*20 + " BINARY WEIGHTED TRUTH TABLE (FLOW-LEVEL) " + "="*20 + "\n"
     binary_weighted_truth_table_text += "Rows = Real Class (Ground Truth)  |  Columns = Guessed Class (Predicted)\n\n"
     binary_weighted_truth_table_text += binary_weighted_cm_df.to_string() + "\n"

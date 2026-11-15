@@ -3,6 +3,7 @@ import pandas as pd
 import warnings
 from statistics import mode
 import argparse
+import itertools
 
 pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
@@ -42,7 +43,14 @@ def get_feature_table(splits_data, feature_name):
     feature_data = feature_data.reset_index(drop=True)
     ##
     # feature_data["Threshold"] = (feature_data["Threshold"]).astype(int)
-    feature_data["Threshold"] = feature_data["Threshold"].astype(int)
+    # feature_data["Threshold"] = feature_data["Threshold"].astype(int)
+    # The tree goes left when value <= threshold. The values in the switch are
+    # integers, and for an integer value "value <= t" is the same as
+    # "value <= floor(t)". astype(int) cuts toward zero instead, so t = -0.5 became 0:
+    # the split that separates -1 (flow features before the inference point) from the
+    # real counts (0, 1, ...) moved, and a real count of 0 went to the -1 side.
+    # np.floor keeps it at -1. Positive thresholds do not change (floor(0.5) = 0).
+    feature_data["Threshold"] = np.floor(feature_data["Threshold"]).astype(int)
     ##
     code_table = pd.DataFrame()
     code_table["Threshold"] = feature_data["Threshold"]
@@ -69,7 +77,20 @@ def get_feature_table(splits_data, feature_name):
     temp.extend(list([1] * (len(code_table.columns) - 1)))
     code_table.loc[len(code_table)] = temp
     code_table = code_table.drop_duplicates(subset=["Threshold"])
+    # A row with a negative threshold is the range of values below 0, which a switch
+    # field (unsigned) never holds; its range would be invalid ("0,-1"). The row is
+    # dropped; its split columns stay, so every value >= 0 is coded as "right of the
+    # negative split", as in the trained tree.
+    code_table = code_table[code_table["Threshold"] >= 0]
     code_table = code_table.reset_index(drop=True)
+    # When every split of the feature is negative, only one row is left, whose range
+    # would be every value (0..max). P4Runtime refuses a range that covers all values
+    # ("range don't care match"), so the row is split in two (0..0 and 1..max) with the
+    # same code, as the table had before the negative row was dropped.
+    if len(code_table) == 1:
+        second_row = code_table.iloc[[0]].copy()
+        second_row["Threshold"] = code_table["Threshold"].iloc[0] + 1
+        code_table = pd.concat([code_table, second_row]).reset_index(drop=True)
     return code_table
 
 
@@ -330,15 +351,24 @@ def convert_model(model, feature_offset, code_table_offset, commands):
             match_str = " ".join(match_fields)
             commands.append(f"table_add {table_name} {action_name} {match_str} => {cla + 1} 1")
 
+    # if len(clf.estimators_) > 1:
+    #     logging.info('Generating voting table commands')
+    #     for i in range(1, 4):
+    #         for j in range(1, 4):
+    #             for k in range(1, 4):
+    #                 if (i != j) & (j != k) & (i != k):
+    #                     pass
+    #                 else:
+    #                     commands.append(f"table_add InferenceModel.VotingTable InferenceModel.SetVotingResult {i} {j} {k} => {mode([i, j, k])}")
+    # The former loop above only covered 3 trees and the classes 1 to 3. Same entries as
+    # the controller (convert_RF_and_populate_tables.py): one per combination of the
+    # classes of the trees (1-based ids), with the most common class as the result.
     if len(clf.estimators_) > 1:
         logging.info('Generating voting table commands')
-        for i in range(1, 4):
-            for j in range(1, 4):
-                for k in range(1, 4):
-                    if (i != j) & (j != k) & (i != k):
-                        pass
-                    else:
-                        commands.append(f"table_add InferenceModel.VotingTable InferenceModel.SetVotingResult {i} {j} {k} => {mode([i, j, k])}")
+        p4_classes = [c + 1 for c in range(len(clf.classes_))]
+        for combo in itertools.product(p4_classes, repeat=len(clf.estimators_)):
+            keys = " ".join(str(cls) for cls in combo)
+            commands.append(f"table_add InferenceModel.VotingTable InferenceModel.SetVotingResult {keys} => {mode(list(combo))}")
 
     return len(feature_names), len(clf.estimators_)
 

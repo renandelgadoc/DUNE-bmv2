@@ -45,7 +45,15 @@ def get_feature_table(splits_data, feature_name):
     feature_data = feature_data.reset_index(drop=True)
     ##
     # feature_data["Threshold"] = (feature_data["Threshold"]).astype(int)
-    feature_data["Threshold"] = feature_data["Threshold"].astype(int)
+    # feature_data["Threshold"] = feature_data["Threshold"].astype(int)
+    # The tree goes left when value <= threshold. The values in the switch are
+    # integers, and for an integer value "value <= t" is the same as
+    # "value <= floor(t)". astype(int) cuts toward zero instead, so t = -0.5 became 0:
+    # the split that separates -1 (flow features before the inference point) from the
+    # real counts (0, 1, ...) moved, and a real count of 0 went to the -1 side.
+    # np.floor keeps it at -1. Positive thresholds do not change (floor(0.5) = 0).
+    # Same rule as p4sources/generate_tables_entries_txt.py (table sizes).
+    feature_data["Threshold"] = np.floor(feature_data["Threshold"]).astype(int)
     ##
     code_table = pd.DataFrame()
     code_table["Threshold"] = feature_data["Threshold"]
@@ -73,7 +81,20 @@ def get_feature_table(splits_data, feature_name):
     temp.extend(list([1] * (len(code_table.columns) - 1)))
     code_table.loc[len(code_table)] = temp
     code_table = code_table.drop_duplicates(subset=["Threshold"])
+    # A row with a negative threshold is the range of values below 0, which a switch
+    # field (unsigned) never holds; its range would be invalid ("0,-1"). The row is
+    # dropped; its split columns stay, so every value >= 0 is coded as "right of the
+    # negative split", as in the trained tree.
+    code_table = code_table[code_table["Threshold"] >= 0]
     code_table = code_table.reset_index(drop=True)
+    # When every split of the feature is negative, only one row is left, whose range
+    # would be every value (0..max). P4Runtime refuses a range that covers all values
+    # ("range don't care match"), so the row is split in two (0..0 and 1..max) with the
+    # same code, as the table had before the negative row was dropped.
+    if len(code_table) == 1:
+        second_row = code_table.iloc[[0]].copy()
+        second_row["Threshold"] = code_table["Threshold"].iloc[0] + 1
+        code_table = pd.concat([code_table, second_row]).reset_index(drop=True)
     return code_table
 
 
